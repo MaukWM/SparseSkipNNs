@@ -64,13 +64,13 @@ class SparseNeuralNetwork(nn.Module):
             # print(f'performing calculatios on layer{i}')
             _new_x = 0
             for j in range(0, i + 1):
-                # print(f'[{i + 1 - j}][{j}]')
                 # print(f"updating _new_x from {_new_x}", end=" ")
 
                 # Can't have more skip connection networks than max_connection_depth
                 if i + 1 - j > self.max_connection_depth:
-                    break
+                    continue
 
+                # print(f'[{i + 1 - j}][{j}]')
                 _new_x = _new_x + F.relu(self.layers[str(i + 1 - j)][j](_xs[j]))
                 # print(f"to {_new_x}")
                 # _new_x = _new_x + F.relu(self.layers[j](_xs[i - j]))
@@ -88,9 +88,10 @@ class SparseNeuralNetwork(nn.Module):
 if __name__ == "__main__":
 
     input_size = 1
-    snn = SparseNeuralNetwork(input_size=input_size)
+    snn = SparseNeuralNetwork(input_size=input_size, amount_hidden_layers=10)
 
-    x = torch.rand(input_size)
+    x = torch.rand((10, input_size))
 
+    print(x, x.dtype)
     print(snn(x))
     # print(snn)
