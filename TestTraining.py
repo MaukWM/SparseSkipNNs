@@ -1,18 +1,25 @@
+import math
+
+import PIL
 import numpy as np
 import torch
 import tqdm as tqdm
+from matplotlib import pyplot as plt
 from torch import nn
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, random_split
 
 from SparseNeuralNetwork import SparseNeuralNetwork
+from item_keys import ItemKey
+
+from PIL import Image, ImageDraw
 
 
 class SineWave(Dataset):
 
     def __init__(self):
-        self.dps = 500
+        self.dps = 5000
         self.x = torch.rand(self.dps, dtype=torch.float32)
-        self.y = torch.sin(self.x)
+        self.y = torch.sin(self.x * math.pi * 2)
 
     def __len__(self):
         return self.dps
@@ -21,33 +28,97 @@ class SineWave(Dataset):
         idx = np.random.randint(0, self.dps)
         return self.x[idx], self.y[idx]
 
+    @staticmethod
+    def get_model_plot_distribution(model, x_min=0, x_max=1, resolution=100):
+        model.eval()
+
+        xs = torch.linspace(x_min, x_max, resolution)
+
+        ys = model(torch.reshape(xs, (xs.shape[0], 1)))
+
+        ys = ys.detach().numpy()
+
+        # Raw image retrieval from: https://stackoverflow.com/questions/58849953/how-do-get-the-raw-plot-image-data-from-matplotlib-instead-of-saving-to-file-o
+        fig, ax = plt.subplots(1, figsize=(4, 4), dpi=300)
+
+        ax.plot(xs, ys, label="pred")
+        ax.plot(xs, torch.sin(xs * math.pi * 2), label="real")
+        ax.legend()
+
+        fig.canvas.draw()
+        temp_canvas = fig.canvas
+        plt.close()
+
+        return PIL.Image.frombytes('RGB', temp_canvas.get_width_height(), temp_canvas.tostring_rgb())
+
+    @staticmethod
+    def plot_model_distribution(model, x_min=0, x_max=1, resolution=100):
+        model.eval()
+
+        xs = torch.linspace(x_min, x_max, resolution)
+
+        ys = model(torch.reshape(xs, (xs.shape[0], 1)))
+
+        ys = ys.detach().numpy()
+
+        plt.plot(xs, ys, label="pred")
+        plt.plot(xs, torch.sin(xs * math.pi * 2), label="real")
+        plt.legend()
+        plt.show()
+
 
 class Training:
 
-    def __init__(self, epochs):
+    def __init__(self, epochs, model):
         self.epochs = epochs
 
         _data_set = SineWave()
-        # TODO: Fix batch sizes over 1
         self.batch_size = 256
-        self.data_generator = DataLoader(_data_set, batch_size=self.batch_size)
 
-        self.model = SparseNeuralNetwork(input_size=1, output_size=1, amount_hidden_layers=3, network_width=50)
-        # self.model.double()
+        # 0.8 means 80% train 20% test
+        self.train_test_split_ratio = 0.8
+        self.train_dataset, self.test_dataset = random_split(_data_set,
+                                                             [round(_data_set.dps * self.train_test_split_ratio),
+                                                              round(_data_set.dps * (1 - self.train_test_split_ratio))])
+
+        self.train_generator = DataLoader(self.train_dataset, batch_size=self.batch_size)
+        self.test_generator = DataLoader(self.test_dataset, batch_size=self.batch_size)
+
+        self.model = model
+
+        self.items = {}
+
+        self.items[ItemKey.TRAINING_LOSS.value] = []
+        self.items[ItemKey.VALIDATION_LOSS.value] = []
+
+        self.images = []
+        self.train_progress_image_interval = 10
+
+    def write_train_progress(self):
+        self.images[0].save('out/gif.gif', save_all=True, append_images=self.images[1:], optimize=False, duration=2, loop=0)
 
     def train(self):
-        self.model.train()
+
         criterion = nn.MSELoss()
-        optimizer = torch.optim.SGD(self.model.parameters(), lr=1e-5)
+        optimizer = torch.optim.SGD(self.model.parameters(), lr=1e-3)
+
         for epoch in range(self.epochs):
-            train_loss = 0
-            i = 0
-            with tqdm.tqdm(self.data_generator, unit="batch") as tepoch:
-                for batch in self.data_generator:
+            with tqdm.tqdm(total=len(self.train_generator) + len(self.test_generator)) as pbar:
+                pbar.set_description(f"epoch {epoch}/{self.epochs}")
+                train_loss = 0
+                val_loss = 0
+
+                # Train
+                # with tqdm.tqdm(self.train_generator, unit="batch") as tepoch:
+                i = 0
+                self.model.train()
+                for batch in self.train_generator:
                     optimizer.zero_grad()
 
                     inp_xs = torch.reshape(batch[0], (batch[0].size()[0], 1))
                     true_ys = torch.reshape(batch[1], (batch[1].size()[0], 1))
+
+                    # print("Train", inp_xs.shape)
 
                     # print(inp_xs.shape)
 
@@ -62,12 +133,58 @@ class Training:
                     i += 1
                     batch_loss = loss.item()
                     train_loss += batch_loss
-                    tepoch.update(1)
-                    tepoch.set_postfix(loss=f"{(train_loss / i):5f}")
+
+                    pbar.set_postfix(train_loss=f"{(train_loss / i):5f}", val_loss=f"0")
+                    pbar.update(1)
+
+                self.items[ItemKey.TRAINING_LOSS.value].append(train_loss)
+
+            # Calculate validation
+            # with tqdm.tqdm(self.test_generator, unit="batch") as tepoch:
+                i = 0
+                self.model.eval()
+                for batch in self.test_generator:
+                    inp_xs = torch.reshape(batch[0], (batch[0].size()[0], 1))
+                    true_ys = torch.reshape(batch[1], (batch[1].size()[0], 1))
+
+                    # print("Validate", inp_xs.shape)
+
+                    pred_ys = self.model(inp_xs)
+                    loss = criterion(pred_ys, true_ys)
+
+                    # print statistics
+                    i += 1
+                    val_loss += loss.item()
+                    pbar.set_postfix(train_loss=f"{self.items[ItemKey.TRAINING_LOSS.value][epoch]:5f}",
+                                     val_loss=f"{(val_loss / i):5f}")
+                    pbar.update(1)
+
+                self.items[ItemKey.VALIDATION_LOSS.value].append(val_loss)
+
+                if epoch % self.train_progress_image_interval == 0:
+                    self.images.append(SineWave.get_model_plot_distribution(self.model))
+
+            # pbar.update(1)
+            # pbar.set_postfix(train_loss=f"{self.items[ItemKey.TRAINING_LOSS.value][epoch]:5f}",
+            #                  val_loss=f"{self.items[ItemKey.VALIDATION_LOSS.value][epoch]:5f}")
 
 
 if __name__ == "__main__":
+    import visualization
 
-    training = Training(epochs=10)
+    snn = SparseNeuralNetwork(input_size=1, output_size=1, amount_hidden_layers=5, network_width=75)
+    training = Training(epochs=1000, model=snn)
 
     training.train()
+    training.model.eval()
+
+    visualization.plot_train_val_loss(training.items)
+
+    # print(training.images)
+
+    SineWave.plot_model_distribution(training.model)
+
+    training.write_train_progress()
+
+    # SineWave.plot_model_distribution(training.model)
+

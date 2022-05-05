@@ -28,6 +28,9 @@ class SparseNeuralNetwork(nn.Module):
 
         self.initialize_network()
 
+        self.hidden_activation_function = F.relu
+        self.final_activation_function = None
+
         # print(self.layers)
 
         # Depending on skip_depth we keep track of different lists of layers
@@ -62,6 +65,11 @@ class SparseNeuralNetwork(nn.Module):
 
         for i in range(self.amount_hidden_layers + 1):
             # print(f'performing calculatios on layer{i}')
+            if i == self.amount_hidden_layers:
+                activation_function = self.final_activation_function
+            else:
+                activation_function = self.hidden_activation_function
+
             _new_x = 0
             for j in range(0, i + 1):
                 # print(f"updating _new_x from {_new_x}", end=" ")
@@ -71,7 +79,10 @@ class SparseNeuralNetwork(nn.Module):
                     continue
 
                 # print(f'[{i + 1 - j}][{j}]')
-                _new_x = _new_x + F.relu(self.layers[str(i + 1 - j)][j](_xs[j]))
+                if activation_function is None:
+                    _new_x = _new_x + self.layers[str(i + 1 - j)][j](_xs[j])
+                else:
+                    _new_x = _new_x + activation_function(self.layers[str(i + 1 - j)][j](_xs[j]))
                 # print(f"to {_new_x}")
                 # _new_x = _new_x + F.relu(self.layers[j](_xs[i - j]))
             _xs[i + 1] = _new_x
@@ -94,4 +105,5 @@ if __name__ == "__main__":
 
     print(x, x.dtype)
     print(snn(x))
+    # print(snn.layers)
     # print(snn)
