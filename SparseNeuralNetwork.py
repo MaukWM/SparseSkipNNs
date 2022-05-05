@@ -31,10 +31,19 @@ class SparseNeuralNetwork(nn.Module):
         self.layers = nn.ModuleDict()
         self.initialize_network()
 
+        # Calculate amount of skip layer instances. TODO: Figure out the formula, it's not difficult but the current solution is inelegant
+        # print([name for name, _ in self.named_parameters() if name.split(".")[1] != "1" and "bias" not in name])
+        self.n_skip_instances = len([name for name, _ in self.named_parameters() if name.split(".")[1] != "1" and "bias" not in name])
+
         # Initialize mask for sparsity
-        self.masks = dict()
+        self.masks = {}
         self.initialize_mask()
         self.apply_mask()
+
+        # print("start")
+        # for name, param in self.named_parameters():
+        #     print(name, param)
+        # print("end")
 
         # Define activation functions used
         self.hidden_activation_function = F.relu
@@ -54,81 +63,67 @@ class SparseNeuralNetwork(nn.Module):
         return result
 
     def get_sparsities(self):
-        sparsities_by_k = []
+        # Calculate n sequential connections
+        # Calculate n skip connections
+        n_seq_connections = 0
+        n_skip_connections = 0
 
-        n_active_connections = dict()
-        n_total_connections = dict()
+        for name, param in self.named_parameters():
+            if "bias" in name:
+                continue
 
-        for k_layer in self.layers.keys():
-            # k_layer_n_activated_connection = 0
-            # k_layer_n_total_connection = 0
-            n_active_connections[k_layer] = dict()
-            n_total_connections[k_layer] = dict()
+            # Check whether the parameter is from sequential or skip layers
+            name_split = name.split(".")
 
-            for name, layer in self.layers[k_layer].named_parameters():
-                if 'bias' in name:
-                    continue
-                n_activated_connection = sum([np.count_nonzero(mask) for mask in self.masks[k_layer]])
-                n_total_connection = sum([mask.size for mask in self.masks[k_layer]])
-                # k_layer_n_activated_connection += n_activated_connection
-                # k_layer_n_total_connection += n_total_connection
-                n_active_connections[k_layer][name] = n_activated_connection
-                n_total_connections[k_layer][name] = n_total_connection
+            # If this is a layer named layers.1.x.weight, it is a sequential layer
+            if name_split[1] == "1":
+                n_seq_connections += np.count_nonzero(self.masks[name])
+            # If this is not a layer named layers.1.x.weight, it is a skip layer
+            else:
+                n_skip_connections += np.count_nonzero(self.masks[name])
 
-        print(n_active_connections, n_total_connections)
+        overall_sparsity = (n_seq_connections + n_skip_connections) / self.n_max_sequential_connections
+        sequential_sparsity = n_seq_connections / self.n_max_sequential_connections
+        skip_sparsity = n_skip_connections / self.n_max_sequential_connections
+        sparsity_ratio = sequential_sparsity / (skip_sparsity + sequential_sparsity)
 
-        # true_sequential_sparsity = sparsities_by_k[0]
-        # true_skip_sparsity = np.sum(sparsities_by_k[1:]) / (self.max_connection_depth - 1)
-        # true_sequential_skip_ratio = true_sequential_sparsity / true_skip_sparsity
+        print(f"[Sparsity] OverallSparsity={overall_sparsity}, SequentialSparsity={sequential_sparsity}, SkipSparsity={skip_sparsity}, SparsityRatio={sparsity_ratio},")
 
-        # print(f'[TrueSequentialSparsity]={true_sequential_sparsity}\n'
-        #       f'[TrueSkipSparsity]={true_skip_sparsity}\n'
-        #       f'[TrueSequentialSkipRatio]={true_sequential_skip_ratio}')
-
-        # return true_sequential_skip_ratio, true_skip_sparsity, true_sequential_skip_ratio
+        return overall_sparsity, sequential_sparsity, skip_sparsity, sparsity_ratio
 
     def apply_mask(self):
-        for k_layer in self.layers.keys():
-            for layer in self.layers[k_layer].keys():
-                # Does multiplying a list work with modulelist? We'll see later
-                self.layers[k_layer][layer] = self.layers[k_layer][layer] * self.masks[k_layer][layer]
-
-    @staticmethod
-    def create_single_mask(shape, sparsity):
-        return np.random.rand(*shape) > sparsity
-        # return np.random.rand((self.amount_hidden_layers, self.network_width)) * self.sparsity < self.skip_sequential_ratio
+        for name, param in self.named_parameters():
+            if "bias" in name:
+                continue
+            # old_param_data = param.data
+            param.data = param.data * self.masks[name]
+            # print(f"applying{name} {self.masks[name]} to {old_param_data} -> {param.data}")
 
     def initialize_mask(self):
-        # TODO: Rewrite to similar dict method emiel uses, build a bit on top for retrieving sparsities ratios
-        # Each iteration of this loop initializes connections for connection depth i.
-        # Create mask for sequential layers
-        self.masks["1"] = self.create_single_mask(shape=(self.amount_hidden_layers, self.network_width),
-                                                  sparsity=self.skip_sequential_ratio * self.sparsity)
+        # First calculate the sparsity for each individual layer, as we must incorporate both global sparsity and
+        # sparsity ratio
+        individual_sequential_layer_sparsity = self.sparsity * (1 - self.skip_sequential_ratio)
 
-        # Create masks for skip layers
-        skip_layer_sparsity = self.skip_sequential_ratio / self.max_connection_depth * self.sparsity
+        # We can't simply calculate one value for this right?
+        individual_skip_layer_sparsity = self.sparsity * self.skip_sequential_ratio / self.n_skip_instances
 
-        for i in range(2, self.max_connection_depth + 1):
-            # print(f'creating {i} skip mask')
-            # TODO: This will not work on skip depths equal to network depth
+        print(individual_sequential_layer_sparsity, individual_skip_layer_sparsity)
 
-            # If i is larger (or equal) than the amount of hidden layers it's impossible to continue, so add a skip
-            # connection from start to end and break out of the loop, we're done!
-            if i > self.amount_hidden_layers:
-                # print(f'size 1')
-                self.masks[str(i)] = self.create_single_mask((self.input_size, self.output_size), skip_layer_sparsity)
-                break
+        # We need to calculate how many skip connection instances there will be of [layers.x.x.weights], this is not hard
+        # Then we know how many initialization rounds there will be and we can calculate the probability each initialization round needs
+        for name, param in self.named_parameters():
+            if name.endswith(".bias"):
+                continue
 
-            _layers = [self.create_single_mask((self.input_size, self.network_width), skip_layer_sparsity)]
+            # Check whether the parameter is from sequential or skip layers
+            name_split = name.split(".")
 
-            for j in range(self.amount_hidden_layers - i):
-                _layers.append(self.create_single_mask((self.network_width, self.network_width), skip_layer_sparsity))
-
-            _layers.append(self.create_single_mask((self.network_width, self.output_size), skip_layer_sparsity))
-            self.masks[str(i)] = _layers
-
-    def apply_mask(self):
-        pass
+            # If this is a layer named layers.1.x.weight, it is a sequential layer
+            if name_split[1] == "1":
+                self.masks[name] = np.random.rand(*param.shape) > (1 - individual_sequential_layer_sparsity)
+            # If this is not a layer named layers.1.x.weight, it is a skip layer
+            else:
+                self.masks[name] = np.random.rand(*param.shape) > individual_skip_layer_sparsity
 
     def initialize_network(self):
         # Each iteration of this loop initializes connections for connection depth i.
@@ -195,7 +190,8 @@ class SparseNeuralNetwork(nn.Module):
 if __name__ == "__main__":
 
     input_size = 1
-    snn = SparseNeuralNetwork(input_size=input_size, amount_hidden_layers=3, max_connection_depth=4, network_width=3)
+    snn = SparseNeuralNetwork(input_size=input_size, amount_hidden_layers=3, max_connection_depth=4, network_width=3,
+                              sparsity=0.5, skip_sequential_ratio=0.5)
 
     x = torch.rand((10, input_size))
 
@@ -206,7 +202,7 @@ if __name__ == "__main__":
     # print(x, x.dtype)
     # print(snn(x))
     # print(snn.layers)
-    for name, param in snn.named_parameters():
-        # if param.requires_grad:
-        print(name, param.data)
+    # for name, param in snn.named_parameters():
+    #     # if param.requires_grad:
+    #     print(name, param.data)
     # print(snn)
