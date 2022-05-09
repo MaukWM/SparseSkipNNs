@@ -69,7 +69,8 @@ class SineWave(Dataset):
 
 class Training:
 
-    def __init__(self, epochs, model):
+    def __init__(self, epochs, model, plot_interval=None):
+        self.plot_interval = plot_interval
         self.epochs = epochs
 
         _data_set = SineWave()
@@ -98,7 +99,6 @@ class Training:
         self.images[0].save('out/gif.gif', save_all=True, append_images=self.images[1:], optimize=False, duration=2, loop=0)
 
     def train(self):
-
         criterion = nn.MSELoss()
         optimizer = torch.optim.SGD(self.model.parameters(), lr=1e-3)
 
@@ -128,6 +128,8 @@ class Training:
                     loss = criterion(pred_ys, true_ys)
                     loss.backward()
                     optimizer.step()
+
+                    # self.model.apply_mask()
 
                     # print statistics
                     i += 1
@@ -163,7 +165,9 @@ class Training:
 
                 if epoch % self.train_progress_image_interval == 0:
                     self.images.append(SineWave.get_model_plot_distribution(self.model))
-
+                if self.plot_interval is not None and epoch % self.plot_interval == 0:
+                    SineWave.plot_model_distribution(self.model)
+                    self.model.get_sparsities()
             # pbar.update(1)
             # pbar.set_postfix(train_loss=f"{self.items[ItemKey.TRAINING_LOSS.value][epoch]:5f}",
             #                  val_loss=f"{self.items[ItemKey.VALIDATION_LOSS.value][epoch]:5f}")
@@ -172,13 +176,18 @@ class Training:
 if __name__ == "__main__":
     import visualization
 
-    snn = SparseNeuralNetwork(input_size=1, output_size=1, amount_hidden_layers=5, network_width=75)
-    training = Training(epochs=1000, model=snn)
+    snn = SparseNeuralNetwork(input_size=1, amount_hidden_layers=15, max_connection_depth=1, network_width=50,
+                              sparsity=0, skip_sequential_ratio=1)
+    training = Training(epochs=1500, model=snn, plot_interval=150)
 
     training.train()
     training.model.eval()
+    # for name, param in training.model.named_parameters():
+    #     print(name, param)
 
     visualization.plot_train_val_loss(training.items)
+
+    # Investigate with up to max k skip connections, to what distribution of k's the network prunes itself
 
     # print(training.images)
 

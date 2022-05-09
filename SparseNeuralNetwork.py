@@ -20,6 +20,7 @@ class SparseNeuralNetwork(nn.Module):
         # TODO: Check max_connection_depth not > network depth and check max_connection_depth=>1
         # TODO: Dissallow ratio if max_conn_depth = 1
         # TODO: dissallow sparsity=1
+        # TODO: disallow skip_seq_ratio = 0 and max_conn_depth=1
         # Set variables
         self.sparsity = sparsity
         self.max_connection_depth = max_connection_depth
@@ -57,7 +58,9 @@ class SparseNeuralNetwork(nn.Module):
         self.n_target_skip_connections = round(self.n_target_active_connections * (1 - self.skip_sequential_ratio))
 
         self.sequential_sparsity = 1 - self.n_target_sequential_connections / self.n_max_sequential_connections
-        self.skip_sparsity = 1 - self.n_target_skip_connections / self.n_max_skip_connections
+        self.skip_sparsity = 1
+        if self.max_connection_depth > 1:
+            self.skip_sparsity = 1 - self.n_target_skip_connections / self.n_max_skip_connections
 
         print(f'Max seq con={self.n_max_sequential_connections}, Max skip con={self.n_max_skip_connections}')
         print(f'Target act con={self.n_target_active_connections}, Target seq con={self.n_target_sequential_connections}, Target skip con={self.n_target_skip_connections}')
@@ -66,7 +69,7 @@ class SparseNeuralNetwork(nn.Module):
         # Initialize mask for sparsity
         self.masks = {}
         self.initialize_mask()
-        self.apply_mask()
+        # self.apply_mask()
 
     def calculate_n_max_sequential_connections(self):
         result = self.input_size * self.network_width
@@ -115,38 +118,28 @@ class SparseNeuralNetwork(nn.Module):
             else:
                 n_skip_connections += np.count_nonzero(self.masks[name])
 
-        overall_sparsity = 1 - (n_seq_connections + n_skip_connections) / self.n_max_sequential_connections
-        sequential_sparsity = 1 - n_seq_connections / self.n_max_sequential_connections
-        skip_sparsity = 1 - n_skip_connections / self.n_max_sequential_connections
-        sparsity_ratio = n_seq_connections / (n_skip_connections + n_seq_connections)
+        actualized_overall_sparsity = 1 - (n_seq_connections + n_skip_connections) / self.n_max_sequential_connections
+        actualized_sequential_sparsity = 1 - n_seq_connections / self.n_max_sequential_connections
+        actualized_skip_sparsity = 1
+        if self.n_max_skip_connections > 0:
+            actualized_skip_sparsity = 1 - n_skip_connections / self.n_max_skip_connections
+        actualized_sparsity_ratio = n_seq_connections / (n_skip_connections + n_seq_connections)
 
-        print(f"[Sparsity] N active connections={n_seq_connections + n_skip_connections}, N active seq connections={n_seq_connections}, N active skip connections={n_skip_connections}")
-        print(f"[Sparsity] OverallSparsity={overall_sparsity}, SequentialSparsity={sequential_sparsity}, SkipSparsity={skip_sparsity}, SparsityRatio={sparsity_ratio}")
+        print(f"[Raw N Data] N max seq connections={self.n_max_sequential_connections}, N active connections={n_seq_connections + n_skip_connections}, N active seq connections={n_seq_connections}, N active skip connections={n_skip_connections}")
+        print(f"[TargetSparsity] OverallSparsity={self.sparsity}, SequentialSparsity={self.sequential_sparsity}, SkipSparsity={self.skip_sparsity}, SparsityRatio={self.skip_sequential_ratio}")
+        print(f"[ActualizedSparsity] OverallSparsity={actualized_overall_sparsity}, SequentialSparsity={actualized_sequential_sparsity}, SkipSparsity={actualized_skip_sparsity}, SparsityRatio={actualized_sparsity_ratio}")
 
-        return overall_sparsity, sequential_sparsity, skip_sparsity, sparsity_ratio
+        return actualized_overall_sparsity, actualized_sequential_sparsity, actualized_skip_sparsity, actualized_sparsity_ratio
+        # return target_overall_sparsity, target_sequential_sparsity, target_skip_sparsity, target_sparsity_ratio
 
     def apply_mask(self):
         for name, param in self.named_parameters():
             if "bias" in name:
                 continue
-            # old_param_data = param.data
-            param.data = param.data * self.masks[name]
+            param.data[~self.masks[name]] = 0
             # print(f"applying{name} {self.masks[name]} to {old_param_data} -> {param.data}")
 
     def initialize_mask(self):
-        # First calculate the sparsity for each individual layer, as we must incorporate both global sparsity and
-        # We know the maximum amount of sequential and skip connections. We must simply uphold the ratio now
-        # individual_sequential_layer_sparsity = (self.n_max_sequential_connections * self.sparsity * self.skip_sequential_ratio) / self.n_max_sequential_connections
-        # sparsity ratio
-        # individual_sequential_layer_sparsity = self.sparsity * (1 - self.skip_sequential_ratio)
-
-        # We can't simply calculate one value for this right?
-        # individual_skip_layer_sparsity = self.sparsity * self.skip_sequential_ratio / self.n_skip_instances
-
-        # print(individual_sequential_layer_sparsity, individual_skip_layer_sparsity)
-
-        # We need to calculate how many skip connection instances there will be of [layers.x.x.weights], this is not hard
-        # Then we know how many initialization rounds there will be and we can calculate the probability each initialization round needs
         for name, param in self.named_parameters():
             if name.endswith(".bias"):
                 continue
@@ -160,6 +153,7 @@ class SparseNeuralNetwork(nn.Module):
             # If this is not a layer named layers.1.x.weight, it is a skip layer
             else:
                 self.masks[name] = np.random.rand(*param.shape) > self.skip_sparsity
+            self.masks[name] = torch.tensor(self.masks[name])
 
     def initialize_network(self):
         # Each iteration of this loop initializes connections for connection depth i.
