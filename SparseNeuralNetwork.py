@@ -17,10 +17,14 @@ class SparseNeuralNetwork(nn.Module):
     def __init__(self, sparsity=0.5, max_connection_depth=4, amount_hidden_layers=3, network_width=3, input_size=1,
                  output_size=1, skip_sequential_ratio=0.5):
         super(SparseNeuralNetwork, self).__init__()
-        # TODO: Check max_connection_depth not > network depth and check max_connection_depth=>1
-        # TODO: Dissallow ratio if max_conn_depth = 1
-        # TODO: dissallow sparsity=1
-        # TODO: disallow skip_seq_ratio = 0 and max_conn_depth=1
+        if max_connection_depth < 1:
+            raise ValueError(f"max_connection_depth must be >=1")
+        if max_connection_depth > amount_hidden_layers + 1:
+            raise ValueError(f"It's not possible to have a higher max_connection_depth than there are hidden_layers: {max_connection_depth}>{amount_hidden_layers + 1}")
+        if max_connection_depth == 1 and skip_sequential_ratio == 0:
+            raise ValueError(f"If the max_connection_depth is 1 (meaning we have a sequential only network), it is not possible to specify a skip-sequential ratio: {skip_sequential_ratio} !=0")
+        if sparsity >= 1 or sparsity < 0:
+            raise ValueError(f"Invalid sparsity {sparsity}, must be 0 <= sparsity < 1")
         # Set variables
         self.sparsity = sparsity
         self.max_connection_depth = max_connection_depth
@@ -69,7 +73,7 @@ class SparseNeuralNetwork(nn.Module):
         # Initialize mask for sparsity
         self.masks = {}
         self.initialize_mask()
-        # self.apply_mask()
+        self.apply_mask()
 
     def calculate_n_max_sequential_connections(self):
         result = self.input_size * self.network_width
