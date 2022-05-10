@@ -52,7 +52,7 @@ class SineWave(Dataset):
         return PIL.Image.frombytes('RGB', temp_canvas.get_width_height(), temp_canvas.tostring_rgb())
 
     @staticmethod
-    def plot_model_distribution(model, x_min=0, x_max=1, resolution=100):
+    def plot_model_distribution(model, x_min=0, x_max=1, resolution=100, epoch=None):
         model.eval()
 
         xs = torch.linspace(x_min, x_max, resolution)
@@ -60,6 +60,9 @@ class SineWave(Dataset):
         ys = model(torch.reshape(xs, (xs.shape[0], 1)))
 
         ys = ys.detach().numpy()
+
+        if epoch is not None:
+            plt.title(f"Epoch {epoch}")
 
         plt.plot(xs, ys, label="pred")
         plt.plot(xs, torch.sin(xs * math.pi * 2), label="real")
@@ -69,12 +72,12 @@ class SineWave(Dataset):
 
 class Training:
 
-    def __init__(self, epochs, model, plot_interval=None):
+    def __init__(self, epochs, model, plot_interval=None, batch_size=64):
         self.plot_interval = plot_interval
         self.epochs = epochs
 
         _data_set = SineWave()
-        self.batch_size = 256
+        self.batch_size = batch_size
 
         # 0.8 means 80% train 20% test
         self.train_test_split_ratio = 0.8
@@ -129,7 +132,7 @@ class Training:
                     loss.backward()
                     optimizer.step()
 
-                    # self.model.apply_mask()
+                    self.model.apply_mask()
 
                     # print statistics
                     i += 1
@@ -166,7 +169,7 @@ class Training:
                 if epoch % self.train_progress_image_interval == 0:
                     self.images.append(SineWave.get_model_plot_distribution(self.model))
                 if self.plot_interval is not None and epoch % self.plot_interval == 0:
-                    SineWave.plot_model_distribution(self.model)
+                    SineWave.plot_model_distribution(self.model, epoch=epoch)
                     self.model.get_sparsities()
             # pbar.update(1)
             # pbar.set_postfix(train_loss=f"{self.items[ItemKey.TRAINING_LOSS.value][epoch]:5f}",
@@ -176,14 +179,16 @@ class Training:
 if __name__ == "__main__":
     import visualization
 
-    snn = SparseNeuralNetwork(input_size=1, amount_hidden_layers=15, max_connection_depth=1, network_width=50,
-                              sparsity=0, skip_sequential_ratio=1)
-    training = Training(epochs=1500, model=snn, plot_interval=150)
+    # TODO: This works for max_conn_depth>2 but for 1 it's broken, fix
+    snn = SparseNeuralNetwork(input_size=1, amount_hidden_layers=8, max_connection_depth=8, network_width=15,
+                              sparsity=0.5, skip_sequential_ratio=0.5)
+    # TODO: figure out why batch sizes of 256 lead to no learning and batch sizes of 1 converge super fast
+    training = Training(epochs=1500, model=snn, plot_interval=50, batch_size=32)
 
     training.train()
     training.model.eval()
-    # for name, param in training.model.named_parameters():
-    #     print(name, param)
+    for name, param in training.model.named_parameters():
+        print(name, param)
 
     visualization.plot_train_val_loss(training.items)
 
