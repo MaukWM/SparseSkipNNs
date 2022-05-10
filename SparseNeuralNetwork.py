@@ -16,6 +16,8 @@ class SparseNeuralNetwork(nn.Module):
     """
     def __init__(self, sparsity=0.5, max_connection_depth=4, amount_hidden_layers=3, network_width=3, input_size=1,
                  output_size=1, skip_sequential_ratio=0.5):
+        # TODO: Add regularization L1/L2 to drive weights down
+
         super(SparseNeuralNetwork, self).__init__()
         if max_connection_depth < 1:
             raise ValueError(f"max_connection_depth must be >=1")
@@ -25,6 +27,7 @@ class SparseNeuralNetwork(nn.Module):
             raise ValueError(f"If the max_connection_depth is 1 (meaning we have a sequential only network), it is not possible to specify a skip-sequential ratio: {skip_sequential_ratio} !=0")
         if sparsity >= 1 or sparsity < 0:
             raise ValueError(f"Invalid sparsity {sparsity}, must be 0 <= sparsity < 1")
+
         # Set variables
         self.sparsity = sparsity
         self.max_connection_depth = max_connection_depth
@@ -58,6 +61,7 @@ class SparseNeuralNetwork(nn.Module):
 
         # Calculate target n active connections for sequential and skip networks
         self.n_target_active_connections = self.n_max_sequential_connections - round(self.sparsity * self.n_max_sequential_connections)
+
         self.n_target_sequential_connections = round(self.n_target_active_connections * self.skip_sequential_ratio)
         self.n_target_skip_connections = round(self.n_target_active_connections * (1 - self.skip_sequential_ratio))
 
@@ -66,9 +70,9 @@ class SparseNeuralNetwork(nn.Module):
         if self.max_connection_depth > 1:
             self.skip_sparsity = 1 - self.n_target_skip_connections / self.n_max_skip_connections
 
-        print(f'Max seq con={self.n_max_sequential_connections}, Max skip con={self.n_max_skip_connections}')
-        print(f'Target act con={self.n_target_active_connections}, Target seq con={self.n_target_sequential_connections}, Target skip con={self.n_target_skip_connections}')
-        print(f'Target seq con sparsity={self.sequential_sparsity}, Target skip con sparsity={self.skip_sparsity}')
+        print(f'[Max Connections] Max seq con={self.n_max_sequential_connections}, Max skip con={self.n_max_skip_connections}')
+        print(f'[Target Connections] Target act con={self.n_target_active_connections}, Target seq con={self.n_target_sequential_connections}, Target skip con={self.n_target_skip_connections}')
+        print(f'[Target Sparsity] Target seq con sparsity={self.sequential_sparsity}, Target skip con sparsity={self.skip_sparsity}')
 
         # Initialize mask for sparsity
         self.masks = {}
@@ -135,6 +139,35 @@ class SparseNeuralNetwork(nn.Module):
 
         return actualized_overall_sparsity, actualized_sequential_sparsity, actualized_skip_sparsity, actualized_sparsity_ratio
         # return target_overall_sparsity, target_sequential_sparsity, target_skip_sparsity, target_sparsity_ratio
+
+    def evolve_network(self):
+        self.eval()
+        # Prune n smallest weights
+        n = 1
+        weight_coordinates = []
+
+        # First get a sorted list of all the weights and their exact coordinates
+        for name in self.masks.keys():
+            current_k = name.split(".")[1]
+            current_layer = int(name.split(".")[2])
+            # print(name, self.masks[name], self.layers[current_k][current_layer].weight)
+            for neuron_idx in range(len(self.layers[current_k][current_layer].weight)):
+                for weight_idx in range(len(self.layers[current_k][current_layer].weight[neuron_idx])):
+                    if self.masks[name][neuron_idx][weight_idx]:
+                        weight_coordinates.append((name, current_k, current_layer, neuron_idx, weight_idx, torch.abs(self.layers[current_k][current_layer].weight[neuron_idx][weight_idx].data)))
+
+        weight_coordinates.sort(key=lambda x: x[5])
+        print(len(weight_coordinates), weight_coordinates)
+
+        # Prune the first n weight from this list
+        for i in range(n):
+            name, current_k, current_layer, neuron_idx, weight_idx, weight_value = weight_coordinates[i]
+            self.masks[name][neuron_idx][weight_idx] = False
+
+        # Regrow n weights anywhere
+
+        # Reapply mask
+        self.apply_mask()
 
     def apply_mask(self):
         for name, param in self.named_parameters():
@@ -225,7 +258,7 @@ if __name__ == "__main__":
 
     input_size = 1
     snn = SparseNeuralNetwork(input_size=input_size, amount_hidden_layers=30, max_connection_depth=14, network_width=30,
-                              sparsity=0.8, skip_sequential_ratio=0)
+                              sparsity=0, skip_sequential_ratio=0.5)
 
     x = torch.rand((10, input_size))
 

@@ -72,9 +72,10 @@ class SineWave(Dataset):
 
 class Training:
 
-    def __init__(self, epochs, model, plot_interval=None, batch_size=64):
+    def __init__(self, epochs, model, plot_interval=None, batch_size=64, evolution_interval=10):
         self.plot_interval = plot_interval
         self.epochs = epochs
+        self.evolution_interval = evolution_interval
 
         _data_set = SineWave()
         self.batch_size = batch_size
@@ -85,8 +86,8 @@ class Training:
                                                              [round(_data_set.dps * self.train_test_split_ratio),
                                                               round(_data_set.dps * (1 - self.train_test_split_ratio))])
 
-        self.train_generator = DataLoader(self.train_dataset, batch_size=self.batch_size)
-        self.test_generator = DataLoader(self.test_dataset, batch_size=self.batch_size)
+        self.train_generator = DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True)
+        self.test_generator = DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=True)
 
         self.model = model
 
@@ -166,6 +167,9 @@ class Training:
 
                 self.items[ItemKey.VALIDATION_LOSS.value].append(val_loss)
 
+                if epoch % self.evolution_interval:
+                    self.model.evolve_network()
+
                 if epoch % self.train_progress_image_interval == 0:
                     self.images.append(SineWave.get_model_plot_distribution(self.model))
                 if self.plot_interval is not None and epoch % self.plot_interval == 0:
@@ -180,15 +184,15 @@ if __name__ == "__main__":
     import visualization
 
     # TODO: This works for max_conn_depth>2 but for 1 it's broken, fix
-    snn = SparseNeuralNetwork(input_size=1, amount_hidden_layers=8, max_connection_depth=8, network_width=15,
+    snn = SparseNeuralNetwork(input_size=1, amount_hidden_layers=3, max_connection_depth=4, network_width=3,
                               sparsity=0.5, skip_sequential_ratio=0.5)
     # TODO: figure out why batch sizes of 256 lead to no learning and batch sizes of 1 converge super fast
-    training = Training(epochs=1500, model=snn, plot_interval=50, batch_size=32)
+    training = Training(epochs=1500, model=snn, plot_interval=50, batch_size=256, evolution_interval=10)
 
     training.train()
     training.model.eval()
-    for name, param in training.model.named_parameters():
-        print(name, param)
+    # for name, param in training.model.named_parameters():
+    #     print(name, param)
 
     visualization.plot_train_val_loss(training.items)
 
