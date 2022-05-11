@@ -8,71 +8,17 @@ from matplotlib import pyplot as plt
 from torch import nn
 from torch.utils.data import Dataset, DataLoader, random_split
 
+from LogLevel import LogLevel
+from SineWave import SineWave
 from SparseNeuralNetwork import SparseNeuralNetwork
 from item_keys import ItemKey
 
 from PIL import Image, ImageDraw
 
 
-class SineWave(Dataset):
-
-    def __init__(self):
-        self.dps = 5000
-        self.x = torch.rand(self.dps, dtype=torch.float32)
-        self.y = torch.sin(self.x * math.pi * 2)
-
-    def __len__(self):
-        return self.dps
-
-    def __getitem__(self, item):
-        idx = np.random.randint(0, self.dps)
-        return self.x[idx], self.y[idx]
-
-    @staticmethod
-    def get_model_plot_distribution(model, x_min=0, x_max=1, resolution=100):
-        model.eval()
-
-        xs = torch.linspace(x_min, x_max, resolution)
-
-        ys = model(torch.reshape(xs, (xs.shape[0], 1)))
-
-        ys = ys.detach().numpy()
-
-        # Raw image retrieval from: https://stackoverflow.com/questions/58849953/how-do-get-the-raw-plot-image-data-from-matplotlib-instead-of-saving-to-file-o
-        fig, ax = plt.subplots(1, figsize=(4, 4), dpi=300)
-
-        ax.plot(xs, ys, label="pred")
-        ax.plot(xs, torch.sin(xs * math.pi * 2), label="real")
-        ax.legend()
-
-        fig.canvas.draw()
-        temp_canvas = fig.canvas
-        plt.close()
-
-        return PIL.Image.frombytes('RGB', temp_canvas.get_width_height(), temp_canvas.tostring_rgb())
-
-    @staticmethod
-    def plot_model_distribution(model, x_min=0, x_max=1, resolution=100, epoch=None):
-        model.eval()
-
-        xs = torch.linspace(x_min, x_max, resolution)
-
-        ys = model(torch.reshape(xs, (xs.shape[0], 1)))
-
-        ys = ys.detach().numpy()
-
-        if epoch is not None:
-            plt.title(f"Epoch {epoch}")
-
-        plt.plot(xs, ys, label="pred")
-        plt.plot(xs, torch.sin(xs * math.pi * 2), label="real")
-        plt.legend()
-        plt.show()
-
-
 class Training:
 
-    def __init__(self, epochs, model, plot_interval=None, batch_size=64, evolution_interval=10):
+    def __init__(self, epochs: int, model: SparseNeuralNetwork, plot_interval=None, batch_size=64, evolution_interval=10):
         self.plot_interval = plot_interval
         self.epochs = epochs
         self.evolution_interval = evolution_interval
@@ -91,10 +37,11 @@ class Training:
 
         self.model = model
 
-        self.items = {}
-
+        # Initialize dict that keeps track of data over training
+        self.items = dict()
         self.items[ItemKey.TRAINING_LOSS.value] = []
         self.items[ItemKey.VALIDATION_LOSS.value] = []
+        self.items[ItemKey.SPARSITIES] = []
 
         self.images = []
         self.train_progress_image_interval = 10
@@ -167,14 +114,14 @@ class Training:
 
                 self.items[ItemKey.VALIDATION_LOSS.value].append(val_loss)
 
-                if epoch % self.evolution_interval:
+                if epoch % self.evolution_interval == 0:
                     self.model.evolve_network()
+                    self.items[ItemKey.SPARSITIES].append(self.model.get_and_update_sparsity_information())
 
                 if epoch % self.train_progress_image_interval == 0:
                     self.images.append(SineWave.get_model_plot_distribution(self.model))
                 if self.plot_interval is not None and epoch % self.plot_interval == 0:
                     SineWave.plot_model_distribution(self.model, epoch=epoch)
-                    self.model.get_sparsities()
             # pbar.update(1)
             # pbar.set_postfix(train_loss=f"{self.items[ItemKey.TRAINING_LOSS.value][epoch]:5f}",
             #                  val_loss=f"{self.items[ItemKey.VALIDATION_LOSS.value][epoch]:5f}")
@@ -183,18 +130,17 @@ class Training:
 if __name__ == "__main__":
     import visualization
 
-    # TODO: This works for max_conn_depth>2 but for 1 it's broken, fix
     snn = SparseNeuralNetwork(input_size=1, amount_hidden_layers=3, max_connection_depth=4, network_width=3,
-                              sparsity=0.5, skip_sequential_ratio=0.5)
-    # TODO: figure out why batch sizes of 256 lead to no learning and batch sizes of 1 converge super fast
-    training = Training(epochs=1500, model=snn, plot_interval=50, batch_size=256, evolution_interval=10)
+                              sparsity=0.5, skip_sequential_ratio=0.5, log_level=LogLevel.VERBOSE)
+
+    training = Training(epochs=150, model=snn, plot_interval=50, batch_size=256, evolution_interval=10)
 
     training.train()
     training.model.eval()
     # for name, param in training.model.named_parameters():
     #     print(name, param)
 
-    visualization.plot_train_val_loss(training.items)
+    visualization.plot_train_val_loss(training)
 
     # Investigate with up to max k skip connections, to what distribution of k's the network prunes itself
 
@@ -203,6 +149,8 @@ if __name__ == "__main__":
     SineWave.plot_model_distribution(training.model)
 
     training.write_train_progress()
+
+    visualization.plot_sparsity_info(training)
 
     # SineWave.plot_model_distribution(training.model)
 
