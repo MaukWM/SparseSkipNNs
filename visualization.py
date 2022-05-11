@@ -11,8 +11,12 @@ def plot_train_val_loss(trainer: SparseTrainer):
     # TODO: Add validation and return warnings if invalid
     items = trainer.items
 
+    plt.title("Training and validation loss")
+    plt.xlabel("Loss")
+    plt.ylabel("Epoch")
     plt.plot(items["training_loss"], label="training_loss")
     plt.plot(items["validation_loss"], label="validation_loss")
+    plt.grid()
     plt.grid()
 
     plt.legend()
@@ -27,18 +31,17 @@ def plot_sparsity_info(trainer: SparseTrainer):
     dict_items = {k: [dic[k] for dic in items] for k in items[0]}
     # TODO: add normalizer for epochs compared to evolve speed
     plt.title("Active connections")
-    plt.grid()
     plt.xlabel("Evolution step TODO: Normalize to epoch")
     plt.ylabel("N Active connections")
-    plt.ylim(0, trainer.model.n_active_connections)
+    plt.ylim(0, trainer.model.n_active_connections * 1.1)
     plt.plot(dict_items["n_active_connections"], label="n_active_connections")
     plt.plot(dict_items["n_seq_connections"], label="n_seq_connections")
     plt.plot(dict_items["n_skip_connections"], label="n_skip_connections")
+    plt.grid()
     plt.legend()
     plt.show()
 
     plt.title("Actualized sparsities")
-    plt.grid()
     plt.xlabel("Evolution step TODO: Normalize to epoch")
     plt.ylabel("Sparsity %")
     plt.ylim(0, 1)
@@ -46,5 +49,6 @@ def plot_sparsity_info(trainer: SparseTrainer):
     plt.plot(dict_items["actualized_sequential_sparsity"], label="actualized_sequential_sparsity")
     plt.plot(dict_items["actualized_skip_sparsity"], label="actualized_skip_sparsity")
     plt.plot(dict_items["actualized_sparsity_ratio"], label="actualized_sparsity_ratio")
+    plt.grid()
     plt.legend()
     plt.show()

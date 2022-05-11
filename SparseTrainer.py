@@ -18,10 +18,13 @@ from PIL import Image, ImageDraw
 
 class Training:
 
-    def __init__(self, epochs: int, model: SparseNeuralNetwork, plot_interval=None, batch_size=64, evolution_interval=10):
+    def __init__(self, epochs: int, model: SparseNeuralNetwork, plot_interval=None, batch_size=64, evolution_interval=10,
+                 prune_rate=0.05, keep_skip_sequential_ratio_same=False, lr=1e-3, early_stopping_threshold=None):
         self.plot_interval = plot_interval
         self.epochs = epochs
         self.evolution_interval = evolution_interval
+        self.lr = lr
+        self.early_stopping_threshold = early_stopping_threshold
 
         _data_set = SineWave()
         self.batch_size = batch_size
@@ -35,7 +38,10 @@ class Training:
         self.train_generator = DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True)
         self.test_generator = DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=True)
 
+        # Set model and initialize model evolution parameters
         self.model = model
+        self.model.prune_rate = prune_rate
+        self.model.keep_skip_sequential_ratio_same = keep_skip_sequential_ratio_same
 
         # Initialize dict that keeps track of data over training
         self.items = dict()
@@ -43,15 +49,19 @@ class Training:
         self.items[ItemKey.VALIDATION_LOSS.value] = []
         self.items[ItemKey.SPARSITIES] = []
 
+        # Distribution images, used with SineWave dataset. Handy for getting a historic overview of model performance
         self.images = []
-        self.train_progress_image_interval = 10
+        self.train_progress_image_interval = 100
 
     def write_train_progress(self):
-        self.images[0].save('out/gif.gif', save_all=True, append_images=self.images[1:], optimize=False, duration=2, loop=0)
+        self.images[0].save('out/gif.gif', save_all=True, append_images=self.images[1:], optimize=False, duration=0.5)
 
     def train(self):
         criterion = nn.MSELoss()
-        optimizer = torch.optim.SGD(self.model.parameters(), lr=1e-3)
+        optimizer = torch.optim.SGD(self.model.parameters(), lr=self.lr)
+
+        early_stopping_counter = 0
+        lowest_val_loss = math.inf
 
         for epoch in range(self.epochs):
             with tqdm.tqdm(total=len(self.train_generator) + len(self.test_generator)) as pbar:
@@ -90,7 +100,7 @@ class Training:
                     pbar.set_postfix(train_loss=f"{(train_loss / i):5f}", val_loss=f"0")
                     pbar.update(1)
 
-                self.items[ItemKey.TRAINING_LOSS.value].append(train_loss)
+                self.items[ItemKey.TRAINING_LOSS.value].append(train_loss / i)
 
             # Calculate validation
             # with tqdm.tqdm(self.test_generator, unit="batch") as tepoch:
@@ -112,7 +122,17 @@ class Training:
                                      val_loss=f"{(val_loss / i):5f}")
                     pbar.update(1)
 
-                self.items[ItemKey.VALIDATION_LOSS.value].append(val_loss)
+                self.items[ItemKey.VALIDATION_LOSS.value].append(val_loss / i)
+
+                # Early stopping policy
+                if self.early_stopping_threshold is not None:
+                    if val_loss < lowest_val_loss:
+                        early_stopping_counter = 0
+                        lowest_val_loss = val_loss
+                    else:
+                        early_stopping_counter += 1
+                        if early_stopping_counter > self.early_stopping_threshold:
+                            break
 
                 if epoch % self.evolution_interval == 0:
                     self.model.evolve_network()
@@ -130,10 +150,11 @@ class Training:
 if __name__ == "__main__":
     import visualization
 
-    snn = SparseNeuralNetwork(input_size=1, amount_hidden_layers=3, max_connection_depth=4, network_width=3,
-                              sparsity=0.5, skip_sequential_ratio=0.5, log_level=LogLevel.VERBOSE)
+    snn = SparseNeuralNetwork(input_size=1, output_size=1, amount_hidden_layers=3, max_connection_depth=4, network_width=500,
+                              sparsity=0.8, skip_sequential_ratio=0.2, log_level=LogLevel.SIMPLE)
 
-    training = Training(epochs=150, model=snn, plot_interval=50, batch_size=256, evolution_interval=10)
+    training = Training(epochs=6000, model=snn, plot_interval=50, batch_size=128, evolution_interval=100,
+                        prune_rate=0.02, keep_skip_sequential_ratio_same=False, lr=2e-3, early_stopping_threshold=None)
 
     training.train()
     training.model.eval()
