@@ -39,6 +39,7 @@ def plot_k_evolution_graphs(trainer: SparseTrainer):
     print(k_sparsity_dists_DL)
 
     plt.title("N change by k")
+    plt.xlim(0, None)
     plt.xlabel("Epoch")
     plt.ylabel("N")
     plt.grid()
@@ -48,6 +49,7 @@ def plot_k_evolution_graphs(trainer: SparseTrainer):
     plt.show()
 
     plt.title("Sparsity change by k")
+    plt.xlim(0, None)
     plt.xlabel("Epoch")
     plt.ylabel("Sparsity")
     plt.grid()

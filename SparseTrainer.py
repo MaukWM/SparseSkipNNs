@@ -76,21 +76,33 @@ class SparseTrainer:
             trainloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
             testloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
 
-        elif dataset_enum == DatasetEnum.CIFAR10:
+        elif dataset_enum == DatasetEnum.CIFAR10 or dataset_enum == DatasetEnum.CIFAR100:
             transform = transforms.Compose(
                 [transforms.ToTensor(),
                  transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
                  transforms.Lambda(lambda x: torch.flatten(x))])
 
-            train_dataset = torchvision.datasets.CIFAR10(root='./data', train=True,
+            if dataset_enum == DatasetEnum.CIFAR10:
+                train_dataset = torchvision.datasets.CIFAR10(root='./data', train=True,
+                                                             download=True, transform=transform)
+                test_dataset = torchvision.datasets.CIFAR10(root='./data', train=False,
+                                                            download=True, transform=transform)
+
+            else:
+                train_dataset = torchvision.datasets.CIFAR100(root='./data', train=True,
                                                               download=True, transform=transform)
+                test_dataset = torchvision.datasets.CIFAR100(root='./data', train=False,
+                                                             download=True, transform=transform)
+
             trainloader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size,
                                                            shuffle=True, num_workers=2)
 
-            test_dataset = torchvision.datasets.CIFAR10(root='./data', train=False,
-                                                             download=True, transform=transform)
             testloader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size,
                                                           shuffle=False, num_workers=2)
+
+        if dataset_enum == DatasetEnum.MNIST:
+            # TODO: Implement
+            pass
 
         return train_dataset, test_dataset, trainloader, testloader
 
@@ -214,7 +226,7 @@ class SparseTrainer:
 if __name__ == "__main__":
     _train_test_split_ratio = 0.8
     _batch_size = 512
-    _dataset_enum = DatasetEnum.CIFAR10
+    _dataset_enum = DatasetEnum.CIFAR100
     # TODO: Add distinction between classification and prediction so we can still use sinewave for testing purposes
 
     # Load datasets
