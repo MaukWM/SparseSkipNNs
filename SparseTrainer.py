@@ -1,4 +1,5 @@
 import math
+import time
 
 import PIL
 import numpy as np
@@ -42,13 +43,21 @@ class SparseTrainer:
         self.model.prune_rate = prune_rate
         self.model.keep_skip_sequential_ratio_same = keep_skip_sequential_ratio_same
 
-        # Initialize dict that keeps track of data over training
+        # Initialize dict that keeps track of data over training TODO: Make dynamic cause this is ugly
         self.items = dict()
         self.items[ItemKey.TRAINING_LOSS.value] = []
         self.items[ItemKey.VALIDATION_LOSS.value] = []
         self.items[ItemKey.TRAINING_ACCURACY.value] = []
         self.items[ItemKey.VALIDATION_ACCURACY.value] = []
-        self.items[ItemKey.SPARSITIES] = []
+        self.items[ItemKey.N_ACTIVE_CONNECTIONS.value] = []
+        self.items[ItemKey.N_ACTIVE_SEQ_CONNECTIONS.value] = []
+        self.items[ItemKey.N_ACTIVE_SKIP_CONNECTIONS.value] = []
+        self.items[ItemKey.ACTUALIZED_OVERALL_SPARSITY.value] = []
+        self.items[ItemKey.ACTUALIZED_SEQUENTIAL_SPARSITY.value] = []
+        self.items[ItemKey.ACTUALIZED_SKIP_SPARSITY.value] = []
+        self.items[ItemKey.ACTUALIZED_SPARSITY_RATIO.value] = []
+        self.items[ItemKey.K_N_DISTRIBUTION.value] = []
+        self.items[ItemKey.K_SPARSITY_DISTRIBUTION.value] = []
 
         # Distribution images, used with SineWave dataset. Handy for getting a historic overview of model performance
         self.images = []
@@ -89,13 +98,15 @@ class SparseTrainer:
         self.images[0].save('out/gif.gif', save_all=True, append_images=self.images[1:], optimize=False, duration=0.5)
 
     def train(self):
+        _train_start = time.time()
         # For prediction
         # criterion = nn.MSELoss()
 
         # For classification
         criterion = nn.CrossEntropyLoss()
 
-        optimizer = torch.optim.SGD(self.model.parameters(), lr=self.lr)
+        # optimizer = torch.optim.SGD(self.model.parameters(), lr=self.lr)
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 
         early_stopping_counter = 0
         lowest_val_loss = math.inf
@@ -182,15 +193,22 @@ class SparseTrainer:
                 if self.evolution_interval is not None:
                     if epoch % self.evolution_interval == 0:
                         self.model.evolve_network()
-                        self.items[ItemKey.SPARSITIES].append(self.model.get_and_update_sparsity_information())
+                        n_active_connections, n_active_seq_connections, n_active_skip_connections, actualized_overall_sparsity, actualized_sequential_sparsity, actualized_skip_sparsity, actualized_sparsity_ratio, k_n_distribution, k_sparsity_distribution = self.model.get_and_update_sparsity_information()
 
-                # if epoch % self.train_progress_image_interval == 0:
-                    # self.images.append(SineWave.get_model_plot_distribution(self.model))
-                # if self.plot_interval is not None and epoch % self.plot_interval == 0:
-                    # SineWave.plot_model_distribution(self.model, epoch=epoch)
-            # pbar.update(1)
-            # pbar.set_postfix(train_loss=f"{self.items[ItemKey.TRAINING_LOSS.value][epoch]:5f}",
-            #                  val_loss=f"{self.items[ItemKey.VALIDATION_LOSS.value][epoch]:5f}")
+                        # TODO: Make this ItemKey system dynamic, (look at how terragolf does the various gamemodes
+                        self.items[ItemKey.N_ACTIVE_CONNECTIONS.value].append(n_active_connections)
+                        self.items[ItemKey.N_ACTIVE_SEQ_CONNECTIONS.value].append(n_active_seq_connections)
+                        self.items[ItemKey.N_ACTIVE_SKIP_CONNECTIONS.value].append(n_active_skip_connections)
+                        self.items[ItemKey.ACTUALIZED_OVERALL_SPARSITY.value].append(actualized_overall_sparsity)
+                        self.items[ItemKey.ACTUALIZED_SEQUENTIAL_SPARSITY.value].append(actualized_sequential_sparsity)
+                        self.items[ItemKey.ACTUALIZED_SKIP_SPARSITY.value].append(actualized_skip_sparsity)
+                        self.items[ItemKey.ACTUALIZED_SPARSITY_RATIO.value].append(actualized_sparsity_ratio)
+                        self.items[ItemKey.K_N_DISTRIBUTION.value].append(k_n_distribution)
+                        self.items[ItemKey.K_SPARSITY_DISTRIBUTION.value].append(k_sparsity_distribution)
+
+        _train_end = time.time()
+
+        print(f"Total training time: {_train_end - _train_start}s")
 
 
 if __name__ == "__main__":
@@ -212,12 +230,14 @@ if __name__ == "__main__":
     # TODO: Add analysis for sparsity for k
 
     # TODO: Add feature which makes it possible to specify each layers width
-    snn = SparseNeuralNetwork(input_size=_input_size, output_size=_output_size, amount_hidden_layers=4, max_connection_depth=5, network_width=150,
-                              sparsity=0.3, skip_sequential_ratio=0.8, log_level=LogLevel.SIMPLE)
+    snn = SparseNeuralNetwork(input_size=_input_size, output_size=_output_size, amount_hidden_layers=3, max_connection_depth=4, network_width=50,
+                              sparsity=0.75, skip_sequential_ratio=0.5, log_level=LogLevel.SIMPLE)
+    # snn = SparseNeuralNetwork(input_size=_input_size, output_size=_output_size, amount_hidden_layers=1, max_connection_depth=1, network_width=1,
+    #                           sparsity=0.3, skip_sequential_ratio=1, log_level=LogLevel.SIMPLE)
 
     trainer = SparseTrainer(_train_dataset, _test_dataset, _trainloader, _testloader,
-                            epochs=500, model=snn, plot_interval=50, batch_size=_batch_size, evolution_interval=50,
-                            prune_rate=0.02, keep_skip_sequential_ratio_same=False, lr=2e-3, early_stopping_threshold=20)
+                            epochs=300, model=snn, plot_interval=50, batch_size=_batch_size, evolution_interval=5,
+                            prune_rate=0.10, keep_skip_sequential_ratio_same=False, lr=2e-3, early_stopping_threshold=15)
 
     trainer.train()
     trainer.model.eval()
@@ -233,9 +253,12 @@ if __name__ == "__main__":
 
     # SineWave.plot_model_distribution(trainer.model)
 
-    trainer.write_train_progress()
+    # trainer.write_train_progress()
 
-    visualization.plot_sparsity_info(trainer)
+    if trainer.evolution_interval is not None:
+        visualization.plot_sparsity_info(trainer)
+        visualization.plot_k_distribution(trainer)
+        visualization.plot_k_evolution_graphs(trainer)
 
     # SineWave.plot_model_distribution(training.model)
 
