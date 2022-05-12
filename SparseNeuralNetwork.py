@@ -24,6 +24,8 @@ class SparseNeuralNetwork(nn.Module):
                  output_size, skip_sequential_ratio, log_level=LogLevel.VERBOSE):
         # TODO: Add regularization L1/L2 to drive weights down
 
+        # TODO: Currently the input is very large from CIFAR10, implement patches? See notes.
+
         super(SparseNeuralNetwork, self).__init__()
         if max_connection_depth < 1:
             raise ValueError(f"max_connection_depth must be >=1")
@@ -150,9 +152,36 @@ class SparseNeuralNetwork(nn.Module):
 
         self.n_active_connections = self.n_active_seq_connections + self.n_active_skip_connections
 
+    def get_k_distribution_info(self):
+        """
+        Get the distribution of n sequential and skip connections by k depth (By N connections and sparsity)
+        """
+        result_by_n = dict()
+        result_by_sparsity = dict()
+        max_connections_by_k = dict()
+
+        for name, param in self.named_parameters():
+            if "bias" in name:
+                continue
+
+            current_k = name.split(".")[1]
+            if current_k not in result_by_n.keys():
+                result_by_n[current_k] = 0
+                result_by_sparsity[current_k] = 0
+                max_connections_by_k[current_k] = 0
+
+            result_by_n[current_k] += torch.count_nonzero(self.masks[name]).item()
+            max_connections_by_k[current_k] += self.masks[name].numel()
+
+        for k in result_by_n.keys():
+            result_by_sparsity[k] = result_by_n[k] / max_connections_by_k[k]
+        return result_by_n, result_by_sparsity
+
     def get_and_update_sparsity_information(self):
         # Update n sequential and skip connections
         self.update_active_connection_info()
+
+        k_n_distribution, k_sparsity_distribution = self.get_k_distribution_info()
 
         # Calculate the actualized sparsity levels in the model
         actualized_overall_sparsity = 1 - (self.n_active_seq_connections + self.n_active_skip_connections) / self.n_max_sequential_connections
@@ -177,15 +206,17 @@ class SparseNeuralNetwork(nn.Module):
             level=LogLevel.SIMPLE)
 
         # Collect result TODO: Change this to just a dict we map in, cause now we have to convert between list of dicts and dict of lists, unncessary
-        result = dict()
-        result["n_active_connections"] = self.n_active_connections
-        result["n_seq_connections"] = self.n_active_seq_connections
-        result["n_skip_connections"] = self.n_active_skip_connections
-        result["actualized_overall_sparsity"] = actualized_overall_sparsity
-        result["actualized_sequential_sparsity"] = actualized_sequential_sparsity
-        result["actualized_skip_sparsity"] = actualized_skip_sparsity
-        result["actualized_sparsity_ratio"] = actualized_sparsity_ratio
-        return result
+        # result = dict()
+        # result["n_active_connections"] = self.n_active_connections
+        # result["n_seq_connections"] = self.n_active_seq_connections
+        # result["n_skip_connections"] = self.n_active_skip_connections
+        # result["actualized_overall_sparsity"] = actualized_overall_sparsity
+        # result["actualized_sequential_sparsity"] = actualized_sequential_sparsity
+        # result["actualized_skip_sparsity"] = actualized_skip_sparsity
+        # result["actualized_sparsity_ratio"] = actualized_sparsity_ratio
+
+        return self.n_active_connections, self.n_active_seq_connections, self.n_active_skip_connections, actualized_overall_sparsity, actualized_sequential_sparsity, actualized_skip_sparsity, actualized_sparsity_ratio, k_n_distribution, k_sparsity_distribution
+        # return result
 
     def evolve_network(self):
         self.l(message="\n\n=============== [EvolveNetwork] ===============", level=LogLevel.SIMPLE)
@@ -205,6 +236,7 @@ class SparseNeuralNetwork(nn.Module):
                     if self.masks[name][neuron_idx][weight_idx]:
                         weight_coordinates.append((name, current_k, current_layer, neuron_idx, weight_idx, torch.abs(self.layers[current_k][current_layer].weight[neuron_idx][weight_idx].data)))
 
+        # TODO: Sorting is expensive, follow the paper that calculated some threshold so it's O(N) where N = all weights
         weight_coordinates.sort(key=lambda x: x[5])
         _end_sorting = time.time()
         # print(len(weight_coordinates), weight_coordinates)
