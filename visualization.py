@@ -17,6 +17,21 @@ def plot_train_val_loss(trainer: SparseTrainer):
     plt.plot(items["training_loss"], label="training_loss")
     plt.plot(items["validation_loss"], label="validation_loss")
     plt.grid()
+
+    plt.legend()
+
+    plt.show()
+
+
+def plot_accuracies(trainer: SparseTrainer):
+    val_items = trainer.items[ItemKey.VALIDATION_ACCURACY.value]
+    train_items = trainer.items[ItemKey.TRAINING_ACCURACY.value]
+
+    plt.title("Training and validation accuracies")
+    plt.xlabel("Accuracy")
+    plt.ylabel("Epoch")
+    plt.plot(train_items, label="training_accuracy")
+    plt.plot(val_items, label="validation_accuracy")
     plt.grid()
 
     plt.legend()
