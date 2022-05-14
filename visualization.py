@@ -26,20 +26,25 @@ def plot_train_val_loss(trainer: SparseTrainer):
 
 
 def plot_k_evolution_graphs(trainer: SparseTrainer):
+    # TODO: Split function into generalized method for 3 different distributions
     items = trainer.items
     _xs = np.arange(start=0, stop=len(items[ItemKey.N_ACTIVE_CONNECTIONS.value]) * trainer.evolution_interval, step=trainer.evolution_interval)
 
     k_n_dists_LD = items[ItemKey.K_N_DISTRIBUTION.value]
     k_sparsity_dists_LD = items[ItemKey.K_SPARSITY_DISTRIBUTION.value]
+    k_sparsity_by_max_seq_dists_LD = items[ItemKey.K_SPARSITY_DISTRIBUTION_BY_MAX_SEQ.value]
 
+    # TODO: Generalize to util function
     # List of Dicts to Dicts of Lists from: https://stackoverflow.com/questions/5558418/list-of-dicts-to-from-dict-of-lists
     k_n_dists_DL = {k: [dic[k] for dic in k_n_dists_LD] for k in k_n_dists_LD[0]}
     k_sparsity_dists_DL = {k: [dic[k] for dic in k_sparsity_dists_LD] for k in k_sparsity_dists_LD[0]}
+    k_sparsity_by_max_seq_dists_DL = {k: [dic[k] for dic in k_sparsity_by_max_seq_dists_LD] for k in k_sparsity_by_max_seq_dists_LD[0]}
     print(k_n_dists_DL)
     print(k_sparsity_dists_DL)
+    print(k_sparsity_by_max_seq_dists_DL)
 
     plt.title("N change by k")
-    plt.xlim(0, None)
+    plt.ylim(0, None)
     plt.xlabel("Epoch")
     plt.ylabel("N")
     plt.grid()
@@ -48,8 +53,8 @@ def plot_k_evolution_graphs(trainer: SparseTrainer):
     plt.legend()
     plt.show()
 
-    plt.title("Sparsity change by k")
-    plt.xlim(0, None)
+    plt.title("Sparsity (by k) change for k")
+    plt.ylim(0, None)
     plt.xlabel("Epoch")
     plt.ylabel("Sparsity")
     plt.grid()
@@ -58,8 +63,19 @@ def plot_k_evolution_graphs(trainer: SparseTrainer):
     plt.legend()
     plt.show()
 
+    plt.title("Sparsity (by max seq) change for k")
+    plt.ylim(0, None)
+    plt.xlabel("Epoch")
+    plt.ylabel("Sparsity")
+    plt.grid()
+    for k in k_n_dists_DL.keys():
+        plt.plot(_xs, k_sparsity_by_max_seq_dists_DL[k], label=f"k={k}")
+    plt.legend()
+    plt.show()
+
 
 def plot_k_distribution(trainer: SparseTrainer):
+    # TODO: Split function into generalized method for 3 different distributions
     items = trainer.items
 
     plt.title("Initial/Final K N Distribution")
@@ -73,7 +89,7 @@ def plot_k_distribution(trainer: SparseTrainer):
     plt.legend()
     plt.show()
 
-    plt.title("Initial/Final K Sparsity Distribution")
+    plt.title("Initial/Final K Sparsity Distribution By K Sparsity")
     k_sparsity_dists = items[ItemKey.K_SPARSITY_DISTRIBUTION.value]
     final_k_sparsity_dist = k_sparsity_dists[len(k_sparsity_dists) - 1]
     initial_k_sparsity_dist = k_sparsity_dists[0]
@@ -81,6 +97,17 @@ def plot_k_distribution(trainer: SparseTrainer):
     plt.grid()
     plt.bar(final_k_sparsity_dist.keys(), final_k_sparsity_dist.values(), label="Final distribution", width=0.8)
     plt.bar(initial_k_sparsity_dist.keys(), initial_k_sparsity_dist.values(), label="Initial distribution", width=0.7)
+    plt.legend()
+    plt.show()
+
+    plt.title("Initial/Final K Sparsity Distribution By Max Seq Sparsity")
+    k_sparsity_by_max_seq_dists = items[ItemKey.K_SPARSITY_DISTRIBUTION_BY_MAX_SEQ.value]
+    final_k_sparsity_by_max_seq_dist = k_sparsity_by_max_seq_dists[len(k_sparsity_by_max_seq_dists) - 1]
+    initial_k_sparsity_by_max_seq_dist = k_sparsity_by_max_seq_dists[0]
+
+    plt.grid()
+    plt.bar(final_k_sparsity_by_max_seq_dist.keys(), final_k_sparsity_by_max_seq_dist.values(), label="Final distribution", width=0.8)
+    plt.bar(initial_k_sparsity_by_max_seq_dist.keys(), initial_k_sparsity_by_max_seq_dist.values(), label="Initial distribution", width=0.7)
     plt.legend()
     plt.show()
 
@@ -106,7 +133,7 @@ def plot_sparsity_info(trainer: SparseTrainer):
 
     plt.title("Active connections")
     plt.xticks(_xs)
-    plt.xlabel("Normalize to epoch")
+    plt.xlabel("Epoch")
     plt.ylabel("N Active connections")
     plt.ylim(0, trainer.model.n_active_connections * 1.1)
 
@@ -118,15 +145,16 @@ def plot_sparsity_info(trainer: SparseTrainer):
     plt.legend()
     plt.show()
 
-    plt.title("Actualized sparsities")
+    plt.title("Actualized sparsities by k sparsity")
     plt.xticks(np.arange(start=0, stop=len(items[ItemKey.N_ACTIVE_CONNECTIONS.value]) * trainer.evolution_interval, step=trainer.evolution_interval))
-    plt.xlabel("Normalize to epoch")
+    plt.xlabel("Epoch")
     plt.ylabel("Sparsity %")
     plt.ylim(0, 1)
 
     plt.plot(_xs, items[ItemKey.ACTUALIZED_OVERALL_SPARSITY.value], label=ItemKey.ACTUALIZED_OVERALL_SPARSITY.value)
     plt.plot(_xs, items[ItemKey.ACTUALIZED_SEQUENTIAL_SPARSITY.value], label=ItemKey.ACTUALIZED_SEQUENTIAL_SPARSITY.value)
     plt.plot(_xs, items[ItemKey.ACTUALIZED_SKIP_SPARSITY.value], label=ItemKey.ACTUALIZED_SKIP_SPARSITY.value)
+    plt.plot(_xs, items[ItemKey.ACTUALIZED_SKIP_SPARSITY_BY_MAX_SEQ.value], label=ItemKey.ACTUALIZED_SKIP_SPARSITY_BY_MAX_SEQ.value)
     plt.plot(_xs, items[ItemKey.ACTUALIZED_SPARSITY_RATIO.value], label=ItemKey.ACTUALIZED_SPARSITY_RATIO.value)
 
     plt.grid()
