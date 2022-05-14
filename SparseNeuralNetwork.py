@@ -158,6 +158,7 @@ class SparseNeuralNetwork(nn.Module):
         """
         result_by_n = dict()
         result_by_sparsity = dict()
+        result_by_sparsity_by_max_seq = dict()
         max_connections_by_k = dict()
 
         for name, param in self.named_parameters():
@@ -168,6 +169,7 @@ class SparseNeuralNetwork(nn.Module):
             if current_k not in result_by_n.keys():
                 result_by_n[current_k] = 0
                 result_by_sparsity[current_k] = 0
+                result_by_sparsity_by_max_seq[current_k] = 0
                 max_connections_by_k[current_k] = 0
 
             result_by_n[current_k] += torch.count_nonzero(self.masks[name]).item()
@@ -175,20 +177,23 @@ class SparseNeuralNetwork(nn.Module):
 
         for k in result_by_n.keys():
             result_by_sparsity[k] = result_by_n[k] / max_connections_by_k[k]
-        return result_by_n, result_by_sparsity
+            result_by_sparsity_by_max_seq[k] = result_by_n[k] / self.n_max_sequential_connections
+        return result_by_n, result_by_sparsity, result_by_sparsity_by_max_seq
 
     def get_and_update_sparsity_information(self):
         # Update n sequential and skip connections
         self.update_active_connection_info()
 
-        k_n_distribution, k_sparsity_distribution = self.get_k_distribution_info()
+        k_n_distribution, k_sparsity_distribution, k_sparsity_distribution_by_max_seq = self.get_k_distribution_info()
 
         # Calculate the actualized sparsity levels in the model
         actualized_overall_sparsity = 1 - (self.n_active_seq_connections + self.n_active_skip_connections) / self.n_max_sequential_connections
         actualized_sequential_sparsity = 1 - self.n_active_seq_connections / self.n_max_sequential_connections
         actualized_skip_sparsity = 1
+        actualized_skip_sparsity_by_max_seq = 1
         if self.n_max_skip_connections > 0:
             actualized_skip_sparsity = 1 - self.n_active_skip_connections / self.n_max_skip_connections
+            actualized_skip_sparsity_by_max_seq = 1 - self.n_active_skip_connections / self.n_max_sequential_connections
         actualized_sparsity_ratio = self.n_active_seq_connections / (self.n_active_skip_connections + self.n_active_seq_connections)
 
         # Log information
@@ -202,7 +207,7 @@ class SparseNeuralNetwork(nn.Module):
             message=f"[TargetSparsity] OverallSparsity={self.sparsity}, SequentialSparsity={self.sequential_sparsity}, SkipSparsity={self.skip_sparsity}, SparsityRatio={self.skip_sequential_ratio}",
             level=LogLevel.SIMPLE)
         self.l(
-            message=f"[ActualizedSparsity] OverallSparsity={actualized_overall_sparsity}, SequentialSparsity={actualized_sequential_sparsity}, SkipSparsity={actualized_skip_sparsity}, SparsityRatio={actualized_sparsity_ratio}",
+            message=f"[ActualizedSparsity] OverallSparsity={actualized_overall_sparsity}, SequentialSparsity={actualized_sequential_sparsity}, SkipSparsity={actualized_skip_sparsity}, SkipSparsityByMaxSeq={actualized_skip_sparsity_by_max_seq}, SparsityRatio={actualized_sparsity_ratio}",
             level=LogLevel.SIMPLE)
 
         # Collect result TODO: Change this to just a dict we map in, cause now we have to convert between list of dicts and dict of lists, unncessary
@@ -215,7 +220,7 @@ class SparseNeuralNetwork(nn.Module):
         # result["actualized_skip_sparsity"] = actualized_skip_sparsity
         # result["actualized_sparsity_ratio"] = actualized_sparsity_ratio
 
-        return self.n_active_connections, self.n_active_seq_connections, self.n_active_skip_connections, actualized_overall_sparsity, actualized_sequential_sparsity, actualized_skip_sparsity, actualized_sparsity_ratio, k_n_distribution, k_sparsity_distribution
+        return self.n_active_connections, self.n_active_seq_connections, self.n_active_skip_connections, actualized_overall_sparsity, actualized_sequential_sparsity, actualized_skip_sparsity, actualized_skip_sparsity_by_max_seq, actualized_sparsity_ratio, k_n_distribution, k_sparsity_distribution, k_sparsity_distribution_by_max_seq
         # return result
 
     def evolve_network(self):
@@ -262,18 +267,19 @@ class SparseNeuralNetwork(nn.Module):
             else:
                 n_skip_pruned += 1
 
+        # TODO: On a long training run (255 epochs, evolution every 15) overall sparsity went down consistently. Fix this, major bug
+        # TODO: To fix this, log all values and intermediate values, print them. Run this for an hour and see what it says
         # Calculate how many new connections we need to meet the target sparsity
-        n_new_sequential_connections = np.clip(self.n_target_sequential_connections - self.n_active_seq_connections, 0, None)
-        n_new_skip_connections = np.clip(self.n_target_skip_connections - self.n_active_skip_connections, 0, None)
-        n_new_connections = n_new_sequential_connections + n_new_skip_connections
 
         self.l(message=f"[EvolveNetwork - PruneNetwork] Sequential connections pruned: {n_sequential_pruned}, Skip connections pruned: {n_skip_pruned}", level=LogLevel.SIMPLE)
 
         # --- Regrow n weights ---
         if self.keep_skip_sequential_ratio_same:
+            n_new_sequential_connections = np.clip(self.n_target_sequential_connections - self.n_active_seq_connections, 0, None)
+            n_new_skip_connections = np.clip(self.n_target_skip_connections - self.n_active_skip_connections, 0, None)
             self.regrow_connections_by_ratio(n_new_sequential_connections, n_new_skip_connections)
         else:
-            # TODO: Implement
+            n_new_connections = np.clip(self.n_target_active_connections - self.n_active_connections, 0, None)
             self.regrow_connections_anywhere(n_new_connections)
 
         # Reapply mask

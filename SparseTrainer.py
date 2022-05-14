@@ -55,9 +55,11 @@ class SparseTrainer:
         self.items[ItemKey.ACTUALIZED_OVERALL_SPARSITY.value] = []
         self.items[ItemKey.ACTUALIZED_SEQUENTIAL_SPARSITY.value] = []
         self.items[ItemKey.ACTUALIZED_SKIP_SPARSITY.value] = []
+        self.items[ItemKey.ACTUALIZED_SKIP_SPARSITY_BY_MAX_SEQ.value] = []
         self.items[ItemKey.ACTUALIZED_SPARSITY_RATIO.value] = []
         self.items[ItemKey.K_N_DISTRIBUTION.value] = []
         self.items[ItemKey.K_SPARSITY_DISTRIBUTION.value] = []
+        self.items[ItemKey.K_SPARSITY_DISTRIBUTION_BY_MAX_SEQ.value] = []
 
         # Distribution images, used with SineWave dataset. Handy for getting a historic overview of model performance
         self.images = []
@@ -95,10 +97,10 @@ class SparseTrainer:
                                                              download=True, transform=transform)
 
             trainloader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size,
-                                                           shuffle=True, num_workers=2)
+                                                      shuffle=True, num_workers=0)
 
             testloader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size,
-                                                          shuffle=False, num_workers=2)
+                                                     shuffle=False, num_workers=0)
 
         if dataset_enum == DatasetEnum.MNIST:
             # TODO: Implement
@@ -203,9 +205,9 @@ class SparseTrainer:
                             break
 
                 if self.evolution_interval is not None:
-                    if epoch % self.evolution_interval == 0:
+                    if epoch > 0 and epoch % self.evolution_interval == 0:
                         self.model.evolve_network()
-                        n_active_connections, n_active_seq_connections, n_active_skip_connections, actualized_overall_sparsity, actualized_sequential_sparsity, actualized_skip_sparsity, actualized_sparsity_ratio, k_n_distribution, k_sparsity_distribution = self.model.get_and_update_sparsity_information()
+                        n_active_connections, n_active_seq_connections, n_active_skip_connections, actualized_overall_sparsity, actualized_sequential_sparsity, actualized_skip_sparsity, actualized_skip_sparsity_by_max_seq, actualized_sparsity_ratio, k_n_distribution, k_sparsity_distribution, k_sparsity_distribution_by_max_seq = self.model.get_and_update_sparsity_information()
 
                         # TODO: Make this ItemKey system dynamic, (look at how terragolf does the various gamemodes
                         self.items[ItemKey.N_ACTIVE_CONNECTIONS.value].append(n_active_connections)
@@ -214,9 +216,11 @@ class SparseTrainer:
                         self.items[ItemKey.ACTUALIZED_OVERALL_SPARSITY.value].append(actualized_overall_sparsity)
                         self.items[ItemKey.ACTUALIZED_SEQUENTIAL_SPARSITY.value].append(actualized_sequential_sparsity)
                         self.items[ItemKey.ACTUALIZED_SKIP_SPARSITY.value].append(actualized_skip_sparsity)
+                        self.items[ItemKey.ACTUALIZED_SKIP_SPARSITY_BY_MAX_SEQ.value].append(actualized_skip_sparsity_by_max_seq)
                         self.items[ItemKey.ACTUALIZED_SPARSITY_RATIO.value].append(actualized_sparsity_ratio)
                         self.items[ItemKey.K_N_DISTRIBUTION.value].append(k_n_distribution)
                         self.items[ItemKey.K_SPARSITY_DISTRIBUTION.value].append(k_sparsity_distribution)
+                        self.items[ItemKey.K_SPARSITY_DISTRIBUTION_BY_MAX_SEQ.value].append(k_sparsity_distribution_by_max_seq)
 
         _train_end = time.time()
 
@@ -226,7 +230,7 @@ class SparseTrainer:
 if __name__ == "__main__":
     _train_test_split_ratio = 0.8
     _batch_size = 512
-    _dataset_enum = DatasetEnum.CIFAR100
+    _dataset_enum = DatasetEnum.CIFAR10
     # TODO: Add distinction between classification and prediction so we can still use sinewave for testing purposes
 
     # Load datasets
@@ -242,14 +246,14 @@ if __name__ == "__main__":
     # TODO: Add analysis for sparsity for k
 
     # TODO: Add feature which makes it possible to specify each layers width
-    snn = SparseNeuralNetwork(input_size=_input_size, output_size=_output_size, amount_hidden_layers=3, max_connection_depth=4, network_width=50,
+    snn = SparseNeuralNetwork(input_size=_input_size, output_size=_output_size, amount_hidden_layers=10, max_connection_depth=11, network_width=20,
                               sparsity=0.75, skip_sequential_ratio=0.5, log_level=LogLevel.SIMPLE)
     # snn = SparseNeuralNetwork(input_size=_input_size, output_size=_output_size, amount_hidden_layers=1, max_connection_depth=1, network_width=1,
     #                           sparsity=0.3, skip_sequential_ratio=1, log_level=LogLevel.SIMPLE)
 
     trainer = SparseTrainer(_train_dataset, _test_dataset, _trainloader, _testloader,
-                            epochs=300, model=snn, plot_interval=50, batch_size=_batch_size, evolution_interval=5,
-                            prune_rate=0.10, keep_skip_sequential_ratio_same=False, lr=2e-3, early_stopping_threshold=15)
+                            epochs=1000, model=snn, plot_interval=50, batch_size=_batch_size, evolution_interval=15,
+                            prune_rate=0.10, keep_skip_sequential_ratio_same=False, lr=2e-4, early_stopping_threshold=50)
 
     trainer.train()
     trainer.model.eval()
