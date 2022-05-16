@@ -310,13 +310,14 @@ class SparseNeuralNetwork(nn.Module):
             self.regrow_on_layer_name_list(n_new_connections, self.sequential_layer_names + self.skip_layer_names)
 
     def regrow_by_ratio(self, n_to_regrow, sequential_layer_names, skip_layer_names, max_iter_ratio=2, regrow_ratio=0.5,
-                        max_iter_connection_growth=10):
+                        max_iter_connection_growth=20):
         """
         Regrow connections by a given ratio.
         :param n_to_regrow: N connections to regrow
         :param sequential_layer_names: The names of the sequential layers available for regrowth
         :param skip_layer_names: The names of the skip layers available for regrowth
-        :param max_iter_ratio: max amount of iterations before giving up regrowth, for dense networks high values can result in long evolution times
+        :param max_iter_ratio: max amount of iterations before stopping regrowth
+        :param max_iter_connection_growth: max amount of iterations when attempting to regrow in a specific layer, high numbers here will lead to very long evolution times on dense networks
         :param regrow_ratio: Regrowth ratio. 0.8 means 80% of regrowth will take place in sequential layers.
         """
         max_iter = n_to_regrow * max_iter_ratio
@@ -333,10 +334,20 @@ class SparseNeuralNetwork(nn.Module):
                     level=LogLevel.SIMPLE)
                 break
 
-            if random.random() < regrow_ratio:
+            # If we activated more k>1 connections don't randomly select but immediately choose a sequential layer, this way regrowth is agnostic of density (but may take longer)
+            if "1" in n_k_activated.keys():
+                _sequential_activated = n_k_activated["1"]
+            else:
+                _sequential_activated = 0
+            _skip_activated = sum([n_k_activated[_k] for _k in n_k_activated.keys() if int(_k) >= 2])
+
+            if _skip_activated > _sequential_activated:
                 _layer_name_list = sequential_layer_names
             else:
-                _layer_name_list = skip_layer_names
+                if random.random() < regrow_ratio:
+                    _layer_name_list = sequential_layer_names
+                else:
+                    _layer_name_list = skip_layer_names
 
             # We could add a feature where a distribution is giving with the sequential and skip layer name list, this allows us to specify which k's regrow more
             _mask_name = np.random.choice(_layer_name_list)
