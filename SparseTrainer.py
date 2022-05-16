@@ -210,6 +210,7 @@ class SparseTrainer:
 
                         n_active_connections, n_active_seq_connections, n_active_skip_connections, actualized_overall_sparsity, actualized_sequential_sparsity, actualized_skip_sparsity, actualized_skip_sparsity_by_max_seq, actualized_sparsity_ratio, k_n_distribution, k_sparsity_distribution, k_sparsity_distribution_by_max_seq = self.model.get_and_update_sparsity_information()
 
+                        # TODO: Add a tracker for # pruned for k, so we can see how much is actually being thrown out every iteration and not that regrowth just forces skips back in
                         # TODO: Make this ItemKey system dynamic, (look at how terragolf does the various gamemodes
                         self.items[ItemKey.N_ACTIVE_CONNECTIONS.value].append(n_active_connections)
                         self.items[ItemKey.N_ACTIVE_SEQ_CONNECTIONS.value].append(n_active_seq_connections)
@@ -249,14 +250,14 @@ if __name__ == "__main__":
     # TODO: Add analysis for sparsity for k
 
     # TODO: Add feature which makes it possible to specify each layers width
-    snn = SparseNeuralNetwork(input_size=_input_size, output_size=_output_size, amount_hidden_layers=10, max_connection_depth=5, network_width=50,
-                              sparsity=0.8, skip_sequential_ratio=1, log_level=LogLevel.SIMPLE)
+    snn = SparseNeuralNetwork(input_size=_input_size, output_size=_output_size, amount_hidden_layers=12, max_connection_depth=13, network_width=5,
+                              sparsity=0.3, skip_sequential_ratio=0.5, log_level=LogLevel.SIMPLE)
     # snn = SparseNeuralNetwork(input_size=_input_size, output_size=_output_size, amount_hidden_layers=1, max_connection_depth=1, network_width=1,
     #                           sparsity=0.3, skip_sequential_ratio=1, log_level=LogLevel.SIMPLE)
 
     trainer = SparseTrainer(_train_dataset, _test_dataset, _trainloader, _testloader,
                             epochs=1000, model=snn, batch_size=_batch_size, evolution_interval=5,
-                            prune_rate=0.3, keep_skip_sequential_ratio_same=False, lr=5e-5, early_stopping_threshold=10)
+                            prune_rate=0.3, keep_skip_sequential_ratio_same=False, lr=2e-3, early_stopping_threshold=10)
 
     trainer.train()
     trainer.model.eval()
