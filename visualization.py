@@ -39,12 +39,11 @@ def plot_k_evolution_graphs(trainer: SparseTrainer):
     k_n_dists_DL = {k: [dic[k] for dic in k_n_dists_LD] for k in k_n_dists_LD[0]}
     k_sparsity_dists_DL = {k: [dic[k] for dic in k_sparsity_dists_LD] for k in k_sparsity_dists_LD[0]}
     k_sparsity_by_max_seq_dists_DL = {k: [dic[k] for dic in k_sparsity_by_max_seq_dists_LD] for k in k_sparsity_by_max_seq_dists_LD[0]}
-    print(k_n_dists_DL)
-    print(k_sparsity_dists_DL)
-    print(k_sparsity_by_max_seq_dists_DL)
+    # print(k_n_dists_DL)
+    # print(k_sparsity_dists_DL)
+    # print(k_sparsity_by_max_seq_dists_DL)
 
     plt.title("N change by k")
-    plt.ylim(0, None)
     plt.xlabel("Epoch")
     plt.ylabel("N")
     plt.grid()
@@ -54,7 +53,7 @@ def plot_k_evolution_graphs(trainer: SparseTrainer):
     plt.show()
 
     plt.title("Sparsity (by k) change for k")
-    plt.ylim(0, None)
+    plt.ylim(0, 1)
     plt.xlabel("Epoch")
     plt.ylabel("Sparsity")
     plt.grid()
@@ -64,7 +63,7 @@ def plot_k_evolution_graphs(trainer: SparseTrainer):
     plt.show()
 
     plt.title("Sparsity (by max seq) change for k")
-    plt.ylim(0, None)
+    plt.ylim(0, 1)
     plt.xlabel("Epoch")
     plt.ylabel("Sparsity")
     plt.grid()
@@ -84,8 +83,8 @@ def plot_k_distribution(trainer: SparseTrainer):
     initial_k_n_dist = k_n_dists[0]
 
     plt.grid()
-    plt.bar(final_k_n_dist.keys(), final_k_n_dist.values(), label="Final distribution", width=0.8)
-    plt.bar(initial_k_n_dist.keys(), initial_k_n_dist.values(), label="Initial distribution", width=0.7)
+    plt.plot(final_k_n_dist.keys(), final_k_n_dist.values(), label="Final distribution")
+    plt.plot(initial_k_n_dist.keys(), initial_k_n_dist.values(), label="Initial distribution")
     plt.legend()
     plt.show()
 
@@ -95,8 +94,8 @@ def plot_k_distribution(trainer: SparseTrainer):
     initial_k_sparsity_dist = k_sparsity_dists[0]
 
     plt.grid()
-    plt.bar(final_k_sparsity_dist.keys(), final_k_sparsity_dist.values(), label="Final distribution", width=0.8)
-    plt.bar(initial_k_sparsity_dist.keys(), initial_k_sparsity_dist.values(), label="Initial distribution", width=0.7)
+    plt.plot(final_k_sparsity_dist.keys(), final_k_sparsity_dist.values(), label="Final distribution")
+    plt.plot(initial_k_sparsity_dist.keys(), initial_k_sparsity_dist.values(), label="Initial distribution")
     plt.legend()
     plt.show()
 
@@ -106,8 +105,8 @@ def plot_k_distribution(trainer: SparseTrainer):
     initial_k_sparsity_by_max_seq_dist = k_sparsity_by_max_seq_dists[0]
 
     plt.grid()
-    plt.bar(final_k_sparsity_by_max_seq_dist.keys(), final_k_sparsity_by_max_seq_dist.values(), label="Final distribution", width=0.8)
-    plt.bar(initial_k_sparsity_by_max_seq_dist.keys(), initial_k_sparsity_by_max_seq_dist.values(), label="Initial distribution", width=0.7)
+    plt.plot(final_k_sparsity_by_max_seq_dist.keys(), final_k_sparsity_by_max_seq_dist.values(), label="Final distribution")
+    plt.plot(initial_k_sparsity_by_max_seq_dist.keys(), initial_k_sparsity_by_max_seq_dist.values(), label="Initial distribution")
     plt.legend()
     plt.show()
 
