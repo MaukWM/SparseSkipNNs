@@ -11,6 +11,7 @@ import random
 
 from LayerType import LayerType
 from LogLevel import LogLevel
+from item_keys import ItemKey
 
 
 class SparseNeuralNetwork(nn.Module):
@@ -196,6 +197,19 @@ class SparseNeuralNetwork(nn.Module):
             actualized_skip_sparsity_by_max_seq = 1 - self.n_active_skip_connections / self.n_max_sequential_connections
         actualized_sparsity_ratio = self.n_active_seq_connections / (self.n_active_skip_connections + self.n_active_seq_connections)
 
+        result = dict()
+        result[ItemKey.N_ACTIVE_CONNECTIONS.value] = self.n_active_connections
+        result[ItemKey.N_ACTIVE_SEQ_CONNECTIONS.value] = self.n_active_seq_connections
+        result[ItemKey.N_ACTIVE_SKIP_CONNECTIONS.value] = self.n_active_skip_connections
+        result[ItemKey.ACTUALIZED_OVERALL_SPARSITY.value] = actualized_overall_sparsity
+        result[ItemKey.ACTUALIZED_SEQUENTIAL_SPARSITY.value] = actualized_sequential_sparsity
+        result[ItemKey.ACTUALIZED_SKIP_SPARSITY.value] = actualized_skip_sparsity
+        result[ItemKey.ACTUALIZED_SKIP_SPARSITY_BY_MAX_SEQ.value] = actualized_skip_sparsity_by_max_seq
+        result[ItemKey.ACTUALIZED_SPARSITY_RATIO.value] = actualized_sparsity_ratio
+        result[ItemKey.K_N_DISTRIBUTION.value] = k_n_distribution
+        result[ItemKey.K_SPARSITY_DISTRIBUTION.value] = k_sparsity_distribution
+        result[ItemKey.K_SPARSITY_DISTRIBUTION_BY_MAX_SEQ.value] = k_sparsity_distribution_by_max_seq
+
         # Log information
         self.l(
             message=f"[TargetN] N max seq connections={self.n_max_sequential_connections}, N target active connections={self.n_target_active_connections}, N target active seq connections={self.n_target_sequential_connections}, N target active skip connections={self.n_target_skip_connections}",
@@ -210,18 +224,7 @@ class SparseNeuralNetwork(nn.Module):
             message=f"[ActualizedSparsity] OverallSparsity={actualized_overall_sparsity}, SequentialSparsity={actualized_sequential_sparsity}, SkipSparsity={actualized_skip_sparsity}, SkipSparsityByMaxSeq={actualized_skip_sparsity_by_max_seq}, SparsityRatio={actualized_sparsity_ratio}",
             level=LogLevel.SIMPLE)
 
-        # Collect result TODO: Change this to just a dict we map in, cause now we have to convert between list of dicts and dict of lists, unncessary
-        # result = dict()
-        # result["n_active_connections"] = self.n_active_connections
-        # result["n_seq_connections"] = self.n_active_seq_connections
-        # result["n_skip_connections"] = self.n_active_skip_connections
-        # result["actualized_overall_sparsity"] = actualized_overall_sparsity
-        # result["actualized_sequential_sparsity"] = actualized_sequential_sparsity
-        # result["actualized_skip_sparsity"] = actualized_skip_sparsity
-        # result["actualized_sparsity_ratio"] = actualized_sparsity_ratio
-
-        return self.n_active_connections, self.n_active_seq_connections, self.n_active_skip_connections, actualized_overall_sparsity, actualized_sequential_sparsity, actualized_skip_sparsity, actualized_skip_sparsity_by_max_seq, actualized_sparsity_ratio, k_n_distribution, k_sparsity_distribution, k_sparsity_distribution_by_max_seq
-        # return result
+        return result
 
     def evolve_network(self):
         self.l(message="\n\n=============== [EvolveNetwork - Start] ===============", level=LogLevel.SIMPLE)
@@ -333,7 +336,7 @@ class SparseNeuralNetwork(nn.Module):
             # Stop when we've regrown everything we need to regrow or when we reach the max amount of iterations
             if n_weights_activated >= n_to_regrow or i == max_iter - 1:
                 self.l(
-                    message=f"[EvolveNetwork - RegrowNetwork] Activated {n_weights_activated}/{n_to_regrow} after {total_iter} iterations.",
+                    message=f"[EvolveNetwork - RegrowNetwork] Activated {n_weights_activated}/{n_to_regrow} after {total_iter}/{max_iter * max_iter_connection_growth} iterations.",
                     level=LogLevel.SIMPLE)
                 break
 
@@ -387,7 +390,7 @@ class SparseNeuralNetwork(nn.Module):
         for i in range(max_iter):
             # Stop when we've regrown everything we need to regrow or when we reach the max amount of iterations
             if n_weights_activated >= n_to_regrow or i == max_iter - 1:
-                self.l(message=f"[EvolveNetwork - RegrowNetwork] Activated {n_weights_activated}/{n_to_regrow} after {i} iterations.",
+                self.l(message=f"[EvolveNetwork - RegrowNetwork] Activated {n_weights_activated}/{n_to_regrow} after {i}/{max_iter} iterations.",
                        level=LogLevel.SIMPLE)
                 break
 

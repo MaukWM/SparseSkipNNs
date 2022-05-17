@@ -16,7 +16,7 @@ from LogLevel import LogLevel
 from SineWave import SineWave
 from SparseNeuralNetwork import SparseNeuralNetwork
 from item_keys import ItemKey
-import visualization
+import Visualizer
 
 from PIL import Image, ImageDraw
 
@@ -42,23 +42,10 @@ class SparseTrainer:
         self.model.prune_rate = prune_rate
         self.model.keep_skip_sequential_ratio_same = keep_skip_sequential_ratio_same
 
-        # Initialize dict that keeps track of data over training TODO: Make dynamic cause this is ugly
+        # Initialize dict that keeps track of data over training TODO: Make dynamic
         self.items = dict()
-        self.items[ItemKey.TRAINING_LOSS.value] = []
-        self.items[ItemKey.VALIDATION_LOSS.value] = []
-        self.items[ItemKey.TRAINING_ACCURACY.value] = []
-        self.items[ItemKey.VALIDATION_ACCURACY.value] = []
-        self.items[ItemKey.N_ACTIVE_CONNECTIONS.value] = []
-        self.items[ItemKey.N_ACTIVE_SEQ_CONNECTIONS.value] = []
-        self.items[ItemKey.N_ACTIVE_SKIP_CONNECTIONS.value] = []
-        self.items[ItemKey.ACTUALIZED_OVERALL_SPARSITY.value] = []
-        self.items[ItemKey.ACTUALIZED_SEQUENTIAL_SPARSITY.value] = []
-        self.items[ItemKey.ACTUALIZED_SKIP_SPARSITY.value] = []
-        self.items[ItemKey.ACTUALIZED_SKIP_SPARSITY_BY_MAX_SEQ.value] = []
-        self.items[ItemKey.ACTUALIZED_SPARSITY_RATIO.value] = []
-        self.items[ItemKey.K_N_DISTRIBUTION.value] = []
-        self.items[ItemKey.K_SPARSITY_DISTRIBUTION.value] = []
-        self.items[ItemKey.K_SPARSITY_DISTRIBUTION_BY_MAX_SEQ.value] = []
+        for item_key in ItemKey:
+            self.items[item_key.value] = []
 
         # Distribution images, used with SineWave dataset. Handy for getting a historic overview of model performance
         self.images = []
@@ -208,23 +195,10 @@ class SparseTrainer:
                         if epoch > 0:
                             self.model.evolve_network()
 
-                        n_active_connections, n_active_seq_connections, n_active_skip_connections, actualized_overall_sparsity, actualized_sequential_sparsity, actualized_skip_sparsity, actualized_skip_sparsity_by_max_seq, actualized_sparsity_ratio, k_n_distribution, k_sparsity_distribution, k_sparsity_distribution_by_max_seq = self.model.get_and_update_sparsity_information()
+                        sparsity_information = self.model.get_and_update_sparsity_information()
 
-                        # TODO: Add a tracker for # pruned for k, so we can see how much is actually being thrown out every iteration and not that regrowth just forces skips back in
-                        # TODO: Make this ItemKey system dynamic, (look at how terragolf does the various gamemodes
-                        self.items[ItemKey.N_ACTIVE_CONNECTIONS.value].append(n_active_connections)
-                        self.items[ItemKey.N_ACTIVE_SEQ_CONNECTIONS.value].append(n_active_seq_connections)
-                        self.items[ItemKey.N_ACTIVE_SKIP_CONNECTIONS.value].append(n_active_skip_connections)
-                        self.items[ItemKey.ACTUALIZED_OVERALL_SPARSITY.value].append(actualized_overall_sparsity)
-                        self.items[ItemKey.ACTUALIZED_SEQUENTIAL_SPARSITY.value].append(actualized_sequential_sparsity)
-                        self.items[ItemKey.ACTUALIZED_SKIP_SPARSITY.value].append(actualized_skip_sparsity)
-                        self.items[ItemKey.ACTUALIZED_SKIP_SPARSITY_BY_MAX_SEQ.value].append(
-                            actualized_skip_sparsity_by_max_seq)
-                        self.items[ItemKey.ACTUALIZED_SPARSITY_RATIO.value].append(actualized_sparsity_ratio)
-                        self.items[ItemKey.K_N_DISTRIBUTION.value].append(k_n_distribution)
-                        self.items[ItemKey.K_SPARSITY_DISTRIBUTION.value].append(k_sparsity_distribution)
-                        self.items[ItemKey.K_SPARSITY_DISTRIBUTION_BY_MAX_SEQ.value].append(
-                            k_sparsity_distribution_by_max_seq)
+                        for item_key in sparsity_information.keys():
+                            self.items[item_key].append(sparsity_information[item_key])
 
         _train_end = time.time()
 
@@ -264,7 +238,7 @@ if __name__ == "__main__":
     # for name, param in training.model.named_parameters():
     #     print(name, param)
 
-    visualizer = visualization.Visualizer(trainer)
+    visualizer = Visualizer.Visualizer(trainer)
     visualizer.visualize_all()
 
     # Investigate with up to max k skip connections, to what distribution of k's the network prunes itself
@@ -274,6 +248,5 @@ if __name__ == "__main__":
     # SineWave.plot_model_distribution(trainer.model)
 
     # trainer.write_train_progress()
-
 
     # SineWave.plot_model_distribution(training.model)
