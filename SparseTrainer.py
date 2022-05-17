@@ -11,6 +11,7 @@ from torch import nn
 from torch.utils.data import Dataset, DataLoader, random_split
 from torchvision.transforms import transforms
 
+from DataLoaderInitializer import DataLoaderInitializer
 from DatasetEnum import DatasetEnum
 from LogLevel import LogLevel
 from SineWave import SineWave
@@ -50,49 +51,6 @@ class SparseTrainer:
         # Distribution images, used with SineWave dataset. Handy for getting a historic overview of model performance
         self.images = []
         self.train_progress_image_interval = 100
-
-    @staticmethod
-    def initialize_dataloaders(dataset_enum, train_test_split_ratio, batch_size):
-        if dataset_enum == DatasetEnum.SINEWAVE:
-            _dataset = SineWave()
-
-            # 0.8 means 80% train 20% test
-            train_dataset, test_dataset = random_split(_dataset,
-                                                                 [round(len(_dataset) * train_test_split_ratio),
-                                                                  round(len(_dataset) * (1 - train_test_split_ratio))])
-
-            trainloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-            testloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
-
-        elif dataset_enum == DatasetEnum.CIFAR10 or dataset_enum == DatasetEnum.CIFAR100:
-            transform = transforms.Compose(
-                [transforms.ToTensor(),
-                 transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-                 transforms.Lambda(lambda x: torch.flatten(x))])
-
-            if dataset_enum == DatasetEnum.CIFAR10:
-                train_dataset = torchvision.datasets.CIFAR10(root='./data', train=True,
-                                                             download=True, transform=transform)
-                test_dataset = torchvision.datasets.CIFAR10(root='./data', train=False,
-                                                            download=True, transform=transform)
-
-            else:
-                train_dataset = torchvision.datasets.CIFAR100(root='./data', train=True,
-                                                              download=True, transform=transform)
-                test_dataset = torchvision.datasets.CIFAR100(root='./data', train=False,
-                                                             download=True, transform=transform)
-
-            trainloader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size,
-                                                      shuffle=True, num_workers=0)
-
-            testloader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size,
-                                                     shuffle=False, num_workers=0)
-
-        if dataset_enum == DatasetEnum.MNIST:
-            # TODO: Implement
-            pass
-
-        return train_dataset, test_dataset, trainloader, testloader
 
     def write_train_progress(self):
         self.images[0].save('out/gif.gif', save_all=True, append_images=self.images[1:], optimize=False, duration=0.5)
@@ -209,12 +167,10 @@ if __name__ == "__main__":
     _train_test_split_ratio = 0.8
     _batch_size = 512 * 4
     _dataset_enum = DatasetEnum.CIFAR10
-    # TODO: Add distinction between classification and prediction so we can still use sinewave for testing purposes
+    data_loader_initializer = DataLoaderInitializer(_dataset_enum, _train_test_split_ratio, _batch_size)
 
     # Load datasets
-    _train_dataset, _test_dataset, _trainloader, _testloader = SparseTrainer.initialize_dataloaders(dataset_enum=_dataset_enum,
-                                                                                                    train_test_split_ratio=_train_test_split_ratio,
-                                                                                                    batch_size=_batch_size)
+    _train_dataset, _test_dataset, _trainloader, _testloader = data_loader_initializer.get_datasets_and_dataloaders()
 
     # Find input and output sizes from dataset
     _input_size = np.prod(_train_dataset.data.shape[1:])
