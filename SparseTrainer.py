@@ -250,13 +250,13 @@ if __name__ == "__main__":
     # TODO: Add analysis for sparsity for k
 
     # TODO: Add feature which makes it possible to specify each layers width
-    snn = SparseNeuralNetwork(input_size=_input_size, output_size=_output_size, amount_hidden_layers=12, max_connection_depth=13, network_width=5,
-                              sparsity=0.3, skip_sequential_ratio=0.5, log_level=LogLevel.SIMPLE)
-    # snn = SparseNeuralNetwork(input_size=_input_size, output_size=_output_size, amount_hidden_layers=1, max_connection_depth=1, network_width=1,
-    #                           sparsity=0.3, skip_sequential_ratio=1, log_level=LogLevel.SIMPLE)
+    # snn = SparseNeuralNetwork(input_size=_input_size, output_size=_output_size, amount_hidden_layers=12, max_connection_depth=13, network_width=5,
+    #                           sparsity=0.3, skip_sequential_ratio=0.5, log_level=LogLevel.SIMPLE)
+    snn = SparseNeuralNetwork(input_size=_input_size, output_size=_output_size, amount_hidden_layers=1, max_connection_depth=1, network_width=1,
+                              sparsity=0.3, skip_sequential_ratio=1, log_level=LogLevel.SIMPLE)
 
     trainer = SparseTrainer(_train_dataset, _test_dataset, _trainloader, _testloader,
-                            epochs=1000, model=snn, batch_size=_batch_size, evolution_interval=5,
+                            epochs=3, model=snn, batch_size=_batch_size, evolution_interval=1,
                             prune_rate=0.3, keep_skip_sequential_ratio_same=False, lr=2e-3, early_stopping_threshold=10)
 
     trainer.train()
@@ -264,8 +264,8 @@ if __name__ == "__main__":
     # for name, param in training.model.named_parameters():
     #     print(name, param)
 
-    visualization.plot_train_val_loss(trainer)
-    visualization.plot_accuracies(trainer)
+    visualizer = visualization.Visualizer(trainer)
+    visualizer.visualize_all()
 
     # Investigate with up to max k skip connections, to what distribution of k's the network prunes itself
 
@@ -275,9 +275,5 @@ if __name__ == "__main__":
 
     # trainer.write_train_progress()
 
-    if trainer.evolution_interval is not None:
-        visualization.plot_sparsity_info(trainer)
-        visualization.plot_k_distribution(trainer)
-        visualization.plot_k_evolution_graphs(trainer)
 
     # SineWave.plot_model_distribution(training.model)
