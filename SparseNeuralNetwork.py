@@ -304,10 +304,13 @@ class SparseNeuralNetwork(nn.Module):
         self.regrow_on_layer_name_list(n_skip_to_regrow, self.skip_layer_names)
 
     def regrow_connections_anywhere(self, n_new_connections, equal_regrowth=True):
-        if equal_regrowth:
-            self.regrow_by_ratio(n_new_connections, self.sequential_layer_names, self.skip_layer_names, regrow_ratio=0.5)
+        if self.max_connection_depth > 1:
+            if equal_regrowth:
+                self.regrow_by_ratio(n_new_connections, self.sequential_layer_names, self.skip_layer_names, regrow_ratio=0.5)
+            else:
+                self.regrow_on_layer_name_list(n_new_connections, self.sequential_layer_names + self.skip_layer_names)
         else:
-            self.regrow_on_layer_name_list(n_new_connections, self.sequential_layer_names + self.skip_layer_names)
+            self.regrow_on_layer_name_list(n_new_connections, self.sequential_layer_names)
 
     def regrow_by_ratio(self, n_to_regrow, sequential_layer_names, skip_layer_names, max_iter_ratio=2, regrow_ratio=0.5,
                         max_iter_connection_growth=20):
