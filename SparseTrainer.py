@@ -27,18 +27,21 @@ class SparseTrainer:
     def __init__(self, train_dataset, test_dataset, trainloader, testloader,
                  epochs: int, model: SparseNeuralNetwork, evolution_interval, batch_size=64,
                  prune_rate=None, keep_skip_sequential_ratio_same=False, lr=1e-3, early_stopping_threshold=None, train_test_split_ratio=0.8,
-                 l1_weight_decay=True, weight_decay_lambda=None, pruning_type="bottom_k", cutoff=None):
+                 decay_type=None, weight_decay_lambda=None, pruning_type="bottom_k", cutoff=None,
+                 regrowth_type=None, regrowth_ratio=None, regrowth_percentage=None, fixed_sparsity=True):
         self.epochs = epochs
         self.evolution_interval = evolution_interval
         self.lr = lr
         self.early_stopping_threshold = early_stopping_threshold
         self.train_test_split_ratio = train_test_split_ratio
         self.batch_size = batch_size
-        self.l1_weight_decay = l1_weight_decay
+        self.decay_type = decay_type
         self.weight_decay_lambda = weight_decay_lambda
         self.pruning_type = pruning_type
         self.cutoff = cutoff
 
+        if decay_type is not None and weight_decay_lambda is None:
+            raise ValueError("If weight decay is used, a weight decay lambda must be specified")
         if pruning_type == "bottom_k" and prune_rate is None:
             raise ValueError("If pruning type \"bottom_k\" is used, a prune rate must be specified")
         if pruning_type == "cutoff" and cutoff is None:
@@ -54,6 +57,10 @@ class SparseTrainer:
         self.model.prune_rate = prune_rate
         self.model.cutoff = cutoff
         self.model.keep_skip_sequential_ratio_same = keep_skip_sequential_ratio_same
+        self.model.regrowth_type = regrowth_type
+        self.model.regrowth_ratio = regrowth_ratio
+        self.model.regrowth_percentage = regrowth_percentage
+        self.model.fixed_sparsity = fixed_sparsity
 
         # Initialize dict that keeps track of data over training TODO: Make dynamic
         self.items = dict()
@@ -103,12 +110,15 @@ class SparseTrainer:
                     pred_ys = self.model(inp_xs)
                     loss = criterion(pred_ys, true_ys)
 
+                    # TODO: Add a weight decay type "l1"/"l2" and None for nothing
                     # Apply weight decay (L1/L2)
                     if self.weight_decay_lambda is not None:
-                        if self.l1_weight_decay:
+                        if self.decay_type == "l1":
                             norm = sum(p.abs().sum() for p in self.model.parameters())
-                        else:
+                        elif self.decay_type == "l2":
                             norm = sum(p.pow(2.0).sum()for p in self.model.parameters())
+                        else:
+                            raise ValueError(f"Weight decay lambda was specified but no valid decay type was specified: {self.decay_type}")
                         loss += self.weight_decay_lambda * norm
 
                     loss.backward()
@@ -206,8 +216,8 @@ if __name__ == "__main__":
                               amount_hidden_layers=1,
                               max_connection_depth=2,
                               network_width=50,
-                              sparsity=0.5,
-                              skip_sequential_ratio=1,
+                              sparsity=0.8,
+                              skip_sequential_ratio=0.5,
                               log_level=LogLevel.SIMPLE)
     # snn = SparseNeuralNetwork(input_size=_input_size, output_size=_output_size, amount_hidden_layers=1, max_connection_depth=1, network_width=1,
     #                           sparsity=0.3, skip_sequential_ratio=1, log_level=LogLevel.SIMPLE)
@@ -221,11 +231,17 @@ if __name__ == "__main__":
                             pruning_type="cutoff",
                             cutoff=0.01,
                             prune_rate=0.1,
+                            # Options: ratio, percentage_active
+                            regrowth_type="ratio",
+                            regrowth_ratio=0.9,
+                            regrowth_percentage=0.1,
+                            fixed_sparsity=True,
                             keep_skip_sequential_ratio_same=False,
                             lr=2e-3,
                             early_stopping_threshold=10,
-                            l1_weight_decay=True,
-                            weight_decay_lambda=0.01)
+                            # Options: l1, l2
+                            decay_type="l1",
+                            weight_decay_lambda=0.0001)
 
     trainer.train()
     trainer.model.eval()

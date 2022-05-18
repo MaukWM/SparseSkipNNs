@@ -53,6 +53,14 @@ class SparseNeuralNetwork(nn.Module):
         # Initialize evolution variables, before training starts these must be initialized by the Trainer
         self.keep_skip_sequential_ratio_same = None
         self.prune_rate = None
+        self.cutoff = None
+        self.regrowth_type = None
+        self.regrowth_ratio = None
+        self.regrowth_percentage = None
+        self.fixed_sparsity = True
+
+        # TODO: Add regrowth types
+        # TODO: Add regrowth type that adds a percentage on top of current k weights (per skip/sequential)? This way the network can become sparse at will
 
         # Initialize network
         self.layers = nn.ModuleDict()
@@ -90,6 +98,7 @@ class SparseNeuralNetwork(nn.Module):
         self.l(message=f'[Target Connections] Target act con={self.n_target_active_connections}, Target seq con={self.n_target_sequential_connections}, Target skip con={self.n_target_skip_connections}', level=LogLevel.SIMPLE)
         self.l(message=f'[Target Sparsity] Target seq con sparsity={self.sequential_sparsity}, Target skip con sparsity={self.skip_sparsity}, Target skip con sparsity (by max seq)={1 - (self.n_target_skip_connections / self.n_max_sequential_connections)}', level=LogLevel.SIMPLE)
 
+        # TODO: When initializing network and we enable cutoff pruning, initialize with everything above the cutoff
         # Initialize mask for sparsity
         self.masks = {}
         self.initialize_mask()
@@ -226,9 +235,10 @@ class SparseNeuralNetwork(nn.Module):
 
         return result
 
-    def evolve_network(self):
-        self.l(message="\n\n=============== [EvolveNetwork - Start] ===============", level=LogLevel.SIMPLE)
-        self.l(message=f"[EvolveNetwork - Pre-pruning] Pre-pruning Overall Sparsity: {self.n_active_connections / self.n_max_sequential_connections}, Pre-pruning Skip Sparsity: {1 - self.n_active_skip_connections / self.n_max_sequential_connections}, Pre-pruning Sequential Sparsity: {1 - self.n_active_seq_connections / self.n_max_sequential_connections}", level=LogLevel.SIMPLE)
+    def prune_network(self):
+        self.l(
+            message=f"[EvolveNetwork - Pre-pruning] Pre-pruning Overall Sparsity: {self.n_active_connections / self.n_max_sequential_connections}, Pre-pruning Skip Sparsity: {1 - self.n_active_skip_connections / self.n_max_sequential_connections}, Pre-pruning Sequential Sparsity: {1 - self.n_active_seq_connections / self.n_max_sequential_connections}",
+            level=LogLevel.SIMPLE)
         self.eval()
         # --- Prune n smallest weights ---
         weight_coordinates = []
@@ -241,7 +251,8 @@ class SparseNeuralNetwork(nn.Module):
             for neuron_idx in range(len(self.layers[current_k][current_layer].weight)):
                 for weight_idx in range(len(self.layers[current_k][current_layer].weight[neuron_idx])):
                     if self.masks[name][neuron_idx][weight_idx]:
-                        weight_coordinates.append((name, current_k, current_layer, neuron_idx, weight_idx, torch.abs(self.layers[current_k][current_layer].weight[neuron_idx][weight_idx].data)))
+                        weight_coordinates.append((name, current_k, current_layer, neuron_idx, weight_idx, torch.abs(
+                            self.layers[current_k][current_layer].weight[neuron_idx][weight_idx].data)))
 
         if len(weight_coordinates) == 0:
             raise ValueError("The entire mask is False! This means sparsity=1, which should never happen.")
@@ -253,7 +264,9 @@ class SparseNeuralNetwork(nn.Module):
             _start_sorting = time.time()
             weight_coordinates.sort(key=lambda x: x[5])
             _end_sorting = time.time()
-            self.l(message=f"[EvolveNetwork - PruneNetwork - Bottom K] len(weight_coordinates)={len(weight_coordinates)}, time_to_sort={_end_sorting - _start_sorting}s", level=LogLevel.SIMPLE)
+            self.l(
+                message=f"[EvolveNetwork - PruneNetwork - Bottom K] len(weight_coordinates)={len(weight_coordinates)}, time_to_sort={_end_sorting - _start_sorting}s",
+                level=LogLevel.SIMPLE)
 
             n_to_prune = round(self.n_active_connections * self.prune_rate)
 
@@ -292,10 +305,6 @@ class SparseNeuralNetwork(nn.Module):
         # Reapply mask
         self.apply_mask()
 
-        # TODO: On a long training run (255 epochs, evolution every 15) overall sparsity went down consistently. Fix this, major bug
-        # TODO: To fix this, log all values and intermediate values, print them. Run this for an hour and see what it says
-        # Calculate how many new connections we need to meet the target sparsity
-
         # TODO: Format these strings nicely (spacing and round floats to 2~3 decimals
         self.l(
             message=f"[EvolveNetwork - Post-pruning] Sequential connections pruned: {n_sequential_pruned}, Skip connections pruned: {n_skip_pruned}",
@@ -304,16 +313,25 @@ class SparseNeuralNetwork(nn.Module):
             message=f"[EvolveNetwork - Post-pruning] Post-pruning Overall Sparsity: {1 - self.n_active_connections / self.n_max_sequential_connections}, Post-pruning Skip Sparsity: {1 - self.n_active_skip_connections / self.n_max_sequential_connections}, Post-pruning Sequential Sparsity: {1 - self.n_active_seq_connections / self.n_max_sequential_connections}",
             level=LogLevel.SIMPLE)
 
-        # --- Regrow n weights ---
-        if self.keep_skip_sequential_ratio_same:
-            n_new_sequential_connections = np.clip(self.n_target_sequential_connections - self.n_active_seq_connections, 0, None)
-            n_new_skip_connections = np.clip(self.n_target_skip_connections - self.n_active_skip_connections, 0, None)
-            self.regrow_connections_by_ratio(n_new_sequential_connections, n_new_skip_connections)
-        else:
-            n_new_connections = np.clip(self.n_target_active_connections - self.n_active_connections, 0, None)
-            self.regrow_connections_anywhere(n_new_connections)
+    def evolve_network(self):
+        self.l(message="\n\n=============== [EvolveNetwork - Start] ===============", level=LogLevel.SIMPLE)
+        self.prune_network()
 
+        # Calculate how many new connections we need to meet the target sparsity
+        self.regrow_network()
         self.l(message="=============== [EvolveNetwork - End] =================", level=LogLevel.SIMPLE)
+
+    def regrow_network(self):
+        if self.regrowth_type == "ratio:":
+            # --- Regrow n weights ---
+            if self.keep_skip_sequential_ratio_same:
+                n_new_sequential_connections = np.clip(self.n_target_sequential_connections - self.n_active_seq_connections,
+                                                       0, None)
+                n_new_skip_connections = np.clip(self.n_target_skip_connections - self.n_active_skip_connections, 0, None)
+                self.regrow_connections_by_ratio(n_new_sequential_connections, n_new_skip_connections)
+            else:
+                n_new_connections = np.clip(self.n_target_active_connections - self.n_active_connections, 0, None)
+                self.regrow_connections_anywhere(n_new_connections)
 
     def regrow_connections_by_ratio(self, n_sequential_to_regrow, n_skip_to_regrow):
         self.regrow_on_layer_name_list(n_sequential_to_regrow, self.sequential_layer_names)
@@ -322,14 +340,13 @@ class SparseNeuralNetwork(nn.Module):
     def regrow_connections_anywhere(self, n_new_connections, equal_regrowth=True):
         if self.max_connection_depth > 1:
             if equal_regrowth:
-                self.regrow_by_ratio(n_new_connections, self.sequential_layer_names, self.skip_layer_names, regrow_ratio=0.5)
+                self.regrow_by_ratio(n_new_connections, self.sequential_layer_names, self.skip_layer_names)
             else:
                 self.regrow_on_layer_name_list(n_new_connections, self.sequential_layer_names + self.skip_layer_names)
         else:
             self.regrow_on_layer_name_list(n_new_connections, self.sequential_layer_names)
 
-    def regrow_by_ratio(self, n_to_regrow, sequential_layer_names, skip_layer_names, max_iter_ratio=2, regrow_ratio=0.5,
-                        max_iter_connection_growth=20):
+    def regrow_by_ratio(self, n_to_regrow, sequential_layer_names, skip_layer_names, max_iter_ratio=2, max_iter_connection_growth=20):
         """
         Regrow connections by a given ratio.
         :param n_to_regrow: N connections to regrow
@@ -337,7 +354,8 @@ class SparseNeuralNetwork(nn.Module):
         :param skip_layer_names: The names of the skip layers available for regrowth
         :param max_iter_ratio: max amount of iterations before stopping regrowth
         :param max_iter_connection_growth: max amount of iterations when attempting to regrow in a specific layer, high numbers here will lead to very long evolution times on dense networks
-        :param regrow_ratio: Regrowth ratio. 0.8 means 80% of regrowth will take place in sequential layers.
+
+        self.regrow_ratio: Regrowth ratio. 0.8 means 80% of regrowth will take place in sequential layers.
         """
         max_iter = n_to_regrow * max_iter_ratio
         n_weights_activated = 0
@@ -362,17 +380,17 @@ class SparseNeuralNetwork(nn.Module):
 
             # Decide whether to regrow a sequential or skip connection depending on ratio and n weight types activated
             if n_weights_activated > 0:
-                if _sequential_activated / n_weights_activated > regrow_ratio:
+                if _sequential_activated / n_weights_activated > self.regrow_ratio:
                     _layer_name_list = skip_layer_names
-                elif _sequential_activated / n_weights_activated < regrow_ratio:
+                elif _sequential_activated / n_weights_activated < self.regrow_ratio:
                     _layer_name_list = sequential_layer_names
                 else:
-                    if random.random() < regrow_ratio:
+                    if random.random() < self.regrow_ratio:
                         _layer_name_list = sequential_layer_names
                     else:
                         _layer_name_list = skip_layer_names
             else:
-                if random.random() < regrow_ratio:
+                if random.random() < self.regrow_ratio:
                     _layer_name_list = sequential_layer_names
                 else:
                     _layer_name_list = skip_layer_names
