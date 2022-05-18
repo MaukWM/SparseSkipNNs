@@ -1,34 +1,26 @@
 import math
 import time
 
-import PIL
 import numpy as np
 import torch
-import torchvision.datasets
 import tqdm as tqdm
-from matplotlib import pyplot as plt
 from torch import nn
-from torch.utils.data import Dataset, DataLoader, random_split
-from torchvision.transforms import transforms
 
 from DataLoaderInitializer import DataLoaderInitializer
 from DatasetEnum import DatasetEnum
 from LogLevel import LogLevel
-from SineWave import SineWave
 from SparseNeuralNetwork import SparseNeuralNetwork
 from item_keys import ItemKey
 import Visualizer
-
-from PIL import Image, ImageDraw
 
 
 class SparseTrainer:
 
     def __init__(self, train_dataset, test_dataset, trainloader, testloader,
                  epochs: int, model: SparseNeuralNetwork, evolution_interval, batch_size=64,
-                 prune_rate=None, keep_skip_sequential_ratio_same=False, lr=1e-3, early_stopping_threshold=None, train_test_split_ratio=0.8,
+                 prune_rate=None, lr=1e-3, early_stopping_threshold=None, train_test_split_ratio=0.8,
                  decay_type=None, weight_decay_lambda=None, pruning_type="bottom_k", cutoff=None,
-                 regrowth_type=None, regrowth_ratio=None, regrowth_percentage=None, fixed_sparsity=True):
+                 regrowth_type=None, regrowth_ratio=None, regrowth_percentage=None):
         self.epochs = epochs
         self.evolution_interval = evolution_interval
         self.lr = lr
@@ -37,8 +29,6 @@ class SparseTrainer:
         self.batch_size = batch_size
         self.decay_type = decay_type
         self.weight_decay_lambda = weight_decay_lambda
-        self.pruning_type = pruning_type
-        self.cutoff = cutoff
 
         if decay_type is not None and weight_decay_lambda is None:
             raise ValueError("If weight decay is used, a weight decay lambda must be specified")
@@ -62,7 +52,11 @@ class SparseTrainer:
         self.model.regrowth_ratio = regrowth_ratio
         self.model.regrowth_percentage = regrowth_percentage
 
-        # Initialize dict that keeps track of data over training TODO: Make dynamic
+        # If we set a cutoff move all the weights outside if the cutoff range
+        if cutoff is not None:
+            self.model.move_weights_outside_cutoff()
+
+        # Initialize dict that keeps track of data over training
         self.items = dict()
         for item_key in ItemKey:
             self.items[item_key.value] = []
@@ -181,8 +175,7 @@ class SparseTrainer:
 
                 if self.evolution_interval is not None:
                     if epoch % self.evolution_interval == 0:
-                        if epoch > 0:
-                            self.model.evolve_network()
+                        self.model.evolve_network()
 
                         sparsity_information = self.model.get_and_update_sparsity_information()
 
@@ -223,7 +216,7 @@ if __name__ == "__main__":
     #                           sparsity=0.3, skip_sequential_ratio=1, log_level=LogLevel.SIMPLE)
 
     trainer = SparseTrainer(_train_dataset, _test_dataset, _trainloader, _testloader,
-                            epochs=50,
+                            epochs=40,
                             model=snn,
                             batch_size=_batch_size,
                             evolution_interval=1,
@@ -235,7 +228,7 @@ if __name__ == "__main__":
                             regrowth_type="percentage",
                             regrowth_ratio=0.5,
                             regrowth_percentage=0.1,
-                            lr=2e-3,
+                            lr=3e-3,
                             early_stopping_threshold=10,
                             # Options: l1, l2
                             decay_type="l1",
