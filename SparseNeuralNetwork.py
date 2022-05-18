@@ -231,10 +231,8 @@ class SparseNeuralNetwork(nn.Module):
         self.l(message=f"[EvolveNetwork - Pre-pruning] Pre-pruning Overall Sparsity: {self.n_active_connections / self.n_max_sequential_connections}, Pre-pruning Skip Sparsity: {1 - self.n_active_skip_connections / self.n_max_sequential_connections}, Pre-pruning Sequential Sparsity: {1 - self.n_active_seq_connections / self.n_max_sequential_connections}", level=LogLevel.SIMPLE)
         self.eval()
         # --- Prune n smallest weights ---
-        n_to_prune = round(self.n_active_connections * self.prune_rate)
         weight_coordinates = []
 
-        _start_sorting = time.time()
         # First get a sorted list of all the weights and their exact coordinates
         for name in self.masks.keys():
             current_k = name.split(".")[1]
@@ -245,29 +243,46 @@ class SparseNeuralNetwork(nn.Module):
                     if self.masks[name][neuron_idx][weight_idx]:
                         weight_coordinates.append((name, current_k, current_layer, neuron_idx, weight_idx, torch.abs(self.layers[current_k][current_layer].weight[neuron_idx][weight_idx].data)))
 
-        # TODO: Sorting is expensive, follow the paper that calculated some threshold so it's O(N) where N = all weights
-        weight_coordinates.sort(key=lambda x: x[5])
-        _end_sorting = time.time()
-        self.l(message=f"[EvolveNetwork - PruneNetwork] len(weight_coordinates)={len(weight_coordinates)}, time_to_sort={_end_sorting - _start_sorting}s", level=LogLevel.SIMPLE)
-
         if len(weight_coordinates) == 0:
             raise ValueError("The entire mask is False! This means sparsity=1, which should never happen.")
 
         n_sequential_pruned = 0
         n_skip_pruned = 0
 
-        # Prune the first n weight from this list
-        for i in range(n_to_prune):
-            name, current_k, current_layer, neuron_idx, weight_idx, weight_value = weight_coordinates[i]
-            self.masks[name][neuron_idx][weight_idx] = False
+        if self.pruning_type == "bottom_k":
+            _start_sorting = time.time()
+            weight_coordinates.sort(key=lambda x: x[5])
+            _end_sorting = time.time()
+            self.l(message=f"[EvolveNetwork - PruneNetwork - Bottom K] len(weight_coordinates)={len(weight_coordinates)}, time_to_sort={_end_sorting - _start_sorting}s", level=LogLevel.SIMPLE)
 
-            # Current k is the depth of the connection
-            current_k = name.split(".")[1]
+            n_to_prune = round(self.n_active_connections * self.prune_rate)
 
-            if current_k == "1":
-                n_sequential_pruned += 1
-            else:
-                n_skip_pruned += 1
+            # Prune the first n weight from this list
+            for i in range(n_to_prune):
+                name, current_k, current_layer, neuron_idx, weight_idx, weight_value = weight_coordinates[i]
+                self.masks[name][neuron_idx][weight_idx] = False
+
+                # Current k is the depth of the connection
+                current_k = name.split(".")[1]
+
+                if current_k == "1":
+                    n_sequential_pruned += 1
+                else:
+                    n_skip_pruned += 1
+
+        if self.pruning_type == "cutoff":
+            for weight_coordinate in weight_coordinates:
+                name, current_k, current_layer, neuron_idx, weight_idx, weight_value = weight_coordinate
+                # Prune by cutoff
+                if weight_value < self.cutoff:
+                    self.masks[name][neuron_idx][weight_idx] = False
+                    # Current k is the depth of the connection
+                    current_k = name.split(".")[1]
+
+                    if current_k == "1":
+                        n_sequential_pruned += 1
+                    else:
+                        n_skip_pruned += 1
 
         # Update n_active connections
         self.n_active_seq_connections -= n_sequential_pruned

@@ -26,13 +26,23 @@ class SparseTrainer:
 
     def __init__(self, train_dataset, test_dataset, trainloader, testloader,
                  epochs: int, model: SparseNeuralNetwork, evolution_interval, batch_size=64,
-                 prune_rate=0.05, keep_skip_sequential_ratio_same=False, lr=1e-3, early_stopping_threshold=None, train_test_split_ratio=0.8):
+                 prune_rate=None, keep_skip_sequential_ratio_same=False, lr=1e-3, early_stopping_threshold=None, train_test_split_ratio=0.8,
+                 l1_weight_decay=True, weight_decay_lambda=None, pruning_type="bottom_k", cutoff=None):
         self.epochs = epochs
         self.evolution_interval = evolution_interval
         self.lr = lr
         self.early_stopping_threshold = early_stopping_threshold
         self.train_test_split_ratio = train_test_split_ratio
         self.batch_size = batch_size
+        self.l1_weight_decay = l1_weight_decay
+        self.weight_decay_lambda = weight_decay_lambda
+        self.pruning_type = pruning_type
+        self.cutoff = cutoff
+
+        if pruning_type == "bottom_k" and prune_rate is None:
+            raise ValueError("If pruning type \"bottom_k\" is used, a prune rate must be specified")
+        if pruning_type == "cutoff" and cutoff is None:
+            raise ValueError("If pruning type \"cutoff\" is used, a cutoff must be specified")
 
         # Initialize dataset and dataloaders
         self.train_dataset, self.test_dataset = train_dataset, test_dataset
@@ -40,7 +50,9 @@ class SparseTrainer:
 
         # Set model and initialize model evolution parameters
         self.model = model
+        self.model.pruning_type = pruning_type
         self.model.prune_rate = prune_rate
+        self.model.cutoff = cutoff
         self.model.keep_skip_sequential_ratio_same = keep_skip_sequential_ratio_same
 
         # Initialize dict that keeps track of data over training TODO: Make dynamic
@@ -90,6 +102,15 @@ class SparseTrainer:
 
                     pred_ys = self.model(inp_xs)
                     loss = criterion(pred_ys, true_ys)
+
+                    # Apply weight decay (L1/L2)
+                    if self.weight_decay_lambda is not None:
+                        if self.l1_weight_decay:
+                            norm = sum(p.abs().sum() for p in self.model.parameters())
+                        else:
+                            norm = sum(p.pow(2.0).sum()for p in self.model.parameters())
+                        loss += self.weight_decay_lambda * norm
+
                     loss.backward()
                     optimizer.step()
 
@@ -178,16 +199,33 @@ if __name__ == "__main__":
 
     # TODO: Investigate adding a convolutional layer, or perhaps doing some sparse densenet beforehand
     # TODO: Add analysis for sparsity for k
-
+    # TODO: Calculate when a given ratio will max out the skip connections with a specific sparsity, handy to give the use a heads up cause the skip connections can flatline
     # TODO: Add feature which makes it possible to specify each layers width
-    snn = SparseNeuralNetwork(input_size=_input_size, output_size=_output_size, amount_hidden_layers=1, max_connection_depth=2, network_width=50,
-                              sparsity=0.5, skip_sequential_ratio=0.5, log_level=LogLevel.SIMPLE)
+    snn = SparseNeuralNetwork(input_size=_input_size,
+                              output_size=_output_size,
+                              amount_hidden_layers=1,
+                              max_connection_depth=2,
+                              network_width=50,
+                              sparsity=0.5,
+                              skip_sequential_ratio=1,
+                              log_level=LogLevel.SIMPLE)
     # snn = SparseNeuralNetwork(input_size=_input_size, output_size=_output_size, amount_hidden_layers=1, max_connection_depth=1, network_width=1,
     #                           sparsity=0.3, skip_sequential_ratio=1, log_level=LogLevel.SIMPLE)
 
     trainer = SparseTrainer(_train_dataset, _test_dataset, _trainloader, _testloader,
-                            epochs=50, model=snn, batch_size=_batch_size, evolution_interval=1,
-                            prune_rate=0.1, keep_skip_sequential_ratio_same=False, lr=2e-3, early_stopping_threshold=10)
+                            epochs=50,
+                            model=snn,
+                            batch_size=_batch_size,
+                            evolution_interval=1,
+                            # Options: bottom_k, fixed_cutoff
+                            pruning_type="cutoff",
+                            cutoff=0.01,
+                            prune_rate=0.1,
+                            keep_skip_sequential_ratio_same=False,
+                            lr=2e-3,
+                            early_stopping_threshold=10,
+                            l1_weight_decay=True,
+                            weight_decay_lambda=0.01)
 
     trainer.train()
     trainer.model.eval()
