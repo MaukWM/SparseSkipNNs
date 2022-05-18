@@ -95,7 +95,7 @@ class SparseNeuralNetwork(nn.Module):
 
         self.l(message=f'\n\n[Max Connections] Max seq con={self.n_max_sequential_connections}, Max skip con={self.n_max_skip_connections}', level=LogLevel.SIMPLE)
         self.l(message=f'[Target Connections] Target act con={self.n_target_active_connections}, Target seq con={self.n_target_sequential_connections}, Target skip con={self.n_target_skip_connections}', level=LogLevel.SIMPLE)
-        self.l(message=f'[Target Sparsity] Target seq con sparsity={self.sequential_sparsity}, Target skip con sparsity={self.skip_sparsity}, Target skip con sparsity (by max seq)={1 - (self.n_target_skip_connections / self.n_max_sequential_connections)}', level=LogLevel.SIMPLE)
+        self.l(message=f'[Target Sparsity] Target seq con sparsity={self.sequential_sparsity:.3f}, Target skip con sparsity={self.skip_sparsity:.3f}, Target skip con sparsity (by max seq)={1 - (self.n_target_skip_connections / self.n_max_sequential_connections):.3f}', level=LogLevel.SIMPLE)
 
         # TODO: When initializing network and we enable cutoff pruning, initialize with everything above the cutoff
         # Initialize mask for sparsity
@@ -117,6 +117,20 @@ class SparseNeuralNetwork(nn.Module):
                 self.sequential_layer_names.append(name)
             else:
                 self.skip_layer_names.append(name)
+
+    def move_weights_outside_cutoff(self):
+        with torch.no_grad():
+            for name in self.masks.keys():
+                current_k = name.split(".")[1]
+                current_layer = int(name.split(".")[2])
+                for neuron_idx in range(len(self.layers[current_k][current_layer].weight)):
+                    for weight_idx in range(len(self.layers[current_k][current_layer].weight[neuron_idx])):
+                        if self.masks[name][neuron_idx][weight_idx]:
+                            _weight_value = self.layers[current_k][current_layer].weight[neuron_idx][weight_idx]
+                            if self.cutoff > _weight_value > 0:
+                                self.layers[current_k][current_layer].weight[neuron_idx][weight_idx] += self.cutoff
+                            if -self.cutoff < _weight_value < 0:
+                                self.layers[current_k][current_layer].weight[neuron_idx][weight_idx] -= self.cutoff
 
     def calculate_n_max_sequential_connections(self):
         result = self.input_size * self.network_width
@@ -220,23 +234,27 @@ class SparseNeuralNetwork(nn.Module):
 
         # Log information
         self.l(
-            message=f"[TargetN] N max seq connections={self.n_max_sequential_connections}, N target active connections={self.n_target_active_connections}, N target active seq connections={self.n_target_sequential_connections}, N target active skip connections={self.n_target_skip_connections}",
+            message=f"[NetworkInfo]        N max active connections={self.n_max_skip_connections + self.n_max_sequential_connections}, N max seq connections={self.n_max_sequential_connections}, N max skip connections={self.n_max_skip_connections}",
             level=LogLevel.SIMPLE)
         self.l(
-            message=f"[ActualizedN] N active connections={self.n_active_connections}, N active seq connections={self.n_active_seq_connections}, N active skip connections={self.n_active_skip_connections}",
+            message=f"[TargetN]            N active connections={self.n_target_active_connections}, N active sequential connections={self.n_target_sequential_connections}, N active skip connections={self.n_target_skip_connections}",
             level=LogLevel.SIMPLE)
         self.l(
-            message=f"[TargetSparsity] OverallSparsity={self.sparsity}, SequentialSparsity={self.sequential_sparsity}, SkipSparsity={self.skip_sparsity}, SparsityRatio={self.skip_sequential_ratio}",
+            message=f"[ActualizedN]        N active connections={self.n_active_connections}, N active sequential connections={self.n_active_seq_connections}, N active skip connections={self.n_active_skip_connections}",
             level=LogLevel.SIMPLE)
         self.l(
-            message=f"[ActualizedSparsity] OverallSparsity={actualized_overall_sparsity}, SequentialSparsity={actualized_sequential_sparsity}, SkipSparsity={actualized_skip_sparsity}, SkipSparsityByMaxSeq={actualized_skip_sparsity_by_max_seq}, SparsityRatio={actualized_sparsity_ratio}",
+            message=f"[TargetSparsity]     OverallSparsity={self.sparsity:.3f}, SequentialSparsity={self.sequential_sparsity:.3f}, SkipSparsity={self.skip_sparsity:.3f}, SparsityRatio={self.skip_sequential_ratio:.3f}, SkipSparsityByMaxSeq={self.sequential_sparsity - self.sparsity:.3f}",
+            level=LogLevel.SIMPLE)
+        self.l(
+            message=f"[ActualizedSparsity] OverallSparsity={actualized_overall_sparsity:.3f}, SequentialSparsity={actualized_sequential_sparsity:.3f}, SkipSparsity={actualized_skip_sparsity:.3f}, SparsityRatio={actualized_sparsity_ratio:.3f}, SkipSparsityByMaxSeq={actualized_skip_sparsity_by_max_seq:.3f}",
             level=LogLevel.SIMPLE)
 
         return result
 
     def prune_network(self):
+        _start_pruning = time.time()
         self.l(
-            message=f"[EvolveNetwork - Pre-pruning] Pre-pruning Overall Sparsity: {1 - self.n_active_connections / self.n_max_sequential_connections}, Pre-pruning Skip Sparsity: {1 - self.n_active_skip_connections / self.n_max_sequential_connections}, Pre-pruning Sequential Sparsity: {1 - self.n_active_seq_connections / self.n_max_sequential_connections}",
+            message=f"[EvolveNetwork - Pre-pruning] Pre-pruning Overall Sparsity: {1 - self.n_active_connections / self.n_max_sequential_connections:.3f}, Pre-pruning Skip Sparsity: {1 - self.n_active_skip_connections / self.n_max_sequential_connections:.3f}, Pre-pruning Sequential Sparsity: {1 - self.n_active_seq_connections / self.n_max_sequential_connections:.3f}",
             level=LogLevel.SIMPLE)
         self.eval()
         # --- Prune n smallest weights ---
@@ -250,8 +268,8 @@ class SparseNeuralNetwork(nn.Module):
             for neuron_idx in range(len(self.layers[current_k][current_layer].weight)):
                 for weight_idx in range(len(self.layers[current_k][current_layer].weight[neuron_idx])):
                     if self.masks[name][neuron_idx][weight_idx]:
-                        weight_coordinates.append((name, current_k, current_layer, neuron_idx, weight_idx, torch.abs(
-                            self.layers[current_k][current_layer].weight[neuron_idx][weight_idx].data)))
+                        weight_coordinates.append((name, current_k, current_layer, neuron_idx, weight_idx,
+                            self.layers[current_k][current_layer].weight[neuron_idx][weight_idx].data))
 
         if len(weight_coordinates) == 0:
             raise ValueError("The entire mask is False! This means sparsity=1, which should never happen.")
@@ -261,11 +279,14 @@ class SparseNeuralNetwork(nn.Module):
 
         if self.pruning_type == "bottom_k":
             _start_sorting = time.time()
-            weight_coordinates.sort(key=lambda x: x[5])
+            weight_coordinates.sort(key=lambda x: abs(x[5]))
             _end_sorting = time.time()
             self.l(
-                message=f"[EvolveNetwork - PruneNetwork - Bottom K] len(weight_coordinates)={len(weight_coordinates)}, time_to_sort={_end_sorting - _start_sorting}s",
+                message=f"[EvolveNetwork - PruneNetwork - Bottom K] len(weight_coordinates)={len(weight_coordinates)}, time_to_sort={_end_sorting - _start_sorting:.3f}s",
                 level=LogLevel.SIMPLE)
+            self.l(
+                message=f"[EvolveNetwork - PruneNetwork - Bottom K] sorted_weight_coordinates={weight_coordinates}",
+                level=LogLevel.VERBOSE)
 
             n_to_prune = round(self.n_active_connections * self.prune_rate)
 
@@ -286,7 +307,7 @@ class SparseNeuralNetwork(nn.Module):
             for weight_coordinate in weight_coordinates:
                 name, current_k, current_layer, neuron_idx, weight_idx, weight_value = weight_coordinate
                 # Prune by cutoff
-                if weight_value < self.cutoff:
+                if abs(weight_value) < self.cutoff:
                     self.masks[name][neuron_idx][weight_idx] = False
                     # Current k is the depth of the connection
                     current_k = name.split(".")[1]
@@ -304,12 +325,14 @@ class SparseNeuralNetwork(nn.Module):
         # Reapply mask
         self.apply_mask()
 
+        _end_pruning = time.time()
+
         # TODO: Format these strings nicely (spacing and round floats to 2~3 decimals
         self.l(
-            message=f"[EvolveNetwork - Post-pruning] Sequential connections pruned: {n_sequential_pruned}, Skip connections pruned: {n_skip_pruned}",
+            message=f"[EvolveNetwork - Post-pruning] Sequential connections pruned: {n_sequential_pruned}, Skip connections pruned: {n_skip_pruned}, [Time taken:{_end_pruning - _start_pruning:.2f}s]",
             level=LogLevel.SIMPLE)
         self.l(
-            message=f"[EvolveNetwork - Post-pruning] Post-pruning Overall Sparsity: {1 - self.n_active_connections / self.n_max_sequential_connections}, Post-pruning Skip Sparsity: {1 - self.n_active_skip_connections / self.n_max_sequential_connections}, Post-pruning Sequential Sparsity: {1 - self.n_active_seq_connections / self.n_max_sequential_connections}",
+            message=f"[EvolveNetwork - Post-pruning] Post-pruning Overall Sparsity: {1 - self.n_active_connections / self.n_max_sequential_connections:.3f}, Post-pruning Skip Sparsity: {1 - self.n_active_skip_connections / self.n_max_sequential_connections:.3f}, Post-pruning Sequential Sparsity: {1 - self.n_active_seq_connections / self.n_max_sequential_connections:.3f}",
             level=LogLevel.SIMPLE)
 
     def evolve_network(self):
@@ -324,7 +347,8 @@ class SparseNeuralNetwork(nn.Module):
         if self.regrowth_type == "fixed_sparsity":
             n_new_connections = np.clip(self.n_target_active_connections - self.n_active_connections, 0, None)
         elif self.regrowth_type == "percentage":
-            n_new_connections = round(self.n_active_connections * self.regrowth_percentage)
+            # TODO: Check if clipping works as expected, we never want sparsity > 1
+            n_new_connections = np.clip(round(self.n_active_connections * self.regrowth_percentage), 0, self.n_max_sequential_connections - self.n_active_connections)
         elif self.regrowth_type == "no_regrowth":
             return
         else:
@@ -351,13 +375,15 @@ class SparseNeuralNetwork(nn.Module):
         n_weights_activated = 0
         n_k_activated = dict()
         total_iter = 0
+        _regrow_start = time.time()
 
         for i in range(max_iter):
             total_iter += 1
             # Stop when we've regrown everything we need to regrow or when we reach the max amount of iterations
             if n_weights_activated >= n_to_regrow or i == max_iter - 1:
+                _regrow_end = time.time()
                 self.l(
-                    message=f"[EvolveNetwork - RegrowNetwork] Activated {n_weights_activated}/{n_to_regrow} after {total_iter}/{max_iter * max_iter_connection_growth} iterations.",
+                    message=f"[EvolveNetwork - RegrowNetwork] Activated {n_weights_activated}/{n_to_regrow} after {total_iter}/{max_iter * max_iter_connection_growth} iterations. [Time taken:{_regrow_end - _regrow_start:.3f}s]",
                     level=LogLevel.SIMPLE)
                 break
 
@@ -405,6 +431,7 @@ class SparseNeuralNetwork(nn.Module):
                     if _current_k not in n_k_activated.keys():
                         n_k_activated[_current_k] = 0
                     n_k_activated[_current_k] += 1
+                    break
 
         sequential_activated = n_k_activated["1"]
         skip_activated = sum([n_k_activated[_k] for _k in n_k_activated.keys() if int(_k) >= 2])

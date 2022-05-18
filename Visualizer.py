@@ -79,8 +79,8 @@ class Visualizer:
         initial_k_n_dist = k_n_dist_values[0]
 
         plt.grid()
-        plt.plot(final_k_n_dist.keys(), final_k_n_dist.values(), label="Final distribution")
-        plt.plot(initial_k_n_dist.keys(), initial_k_n_dist.values(), label="Initial distribution")
+        plt.bar(final_k_n_dist.keys(), final_k_n_dist.values(), label="Final distribution", width=0.7)
+        plt.bar(initial_k_n_dist.keys(), initial_k_n_dist.values(), label="Initial distribution", width=0.6)
         plt.legend()
         plt.show()
 
@@ -114,7 +114,7 @@ class Visualizer:
         plt.xticks(_xs)
         plt.xlabel("Epoch")
         plt.ylabel("N Active connections")
-        plt.ylim(0, self.trainer.model.n_active_connections * 1.1)
+        # plt.ylim(0, None)
 
         plt.plot(_xs, self.trainer_items[ItemKey.N_ACTIVE_CONNECTIONS.value], label=ItemKey.N_ACTIVE_CONNECTIONS.value)
         plt.plot(_xs, self.trainer_items[ItemKey.N_ACTIVE_SEQ_CONNECTIONS.value], label=ItemKey.N_ACTIVE_SEQ_CONNECTIONS.value)
