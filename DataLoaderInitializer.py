@@ -57,8 +57,16 @@ class DataLoaderInitializer:
                                                       shuffle=False, num_workers=0)
 
     def initialize_mnist_dataloader(self):
-        # TODO: Implement
-        pass
+        transform = transforms.Compose(
+            [transforms.ToTensor(),
+             torchvision.transforms.Normalize((0.1307,), (0.3081,)),
+             transforms.Lambda(lambda x: torch.flatten(x))])
+
+        self.train_dataset = torchvision.datasets.MNIST('./data', train=True, download=True, transform=transform)
+        self.trainloader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True)
+
+        self.test_dataset = torchvision.datasets.MNIST('./data', train=False, download=True, transform=transform)
+        self.testloader = torch.utils.data.DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=True)
 
     def initialize_dataloader(self):
         if self.dataset_enum == DatasetEnum.SINEWAVE:
