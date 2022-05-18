@@ -196,7 +196,7 @@ class SparseTrainer:
 if __name__ == "__main__":
     _train_test_split_ratio = 0.8
     _batch_size = 512 * 4
-    _dataset_enum = DatasetEnum.MNIST
+    _dataset_enum = DatasetEnum.CIFAR100
     data_loader_initializer = DataLoaderInitializer(_dataset_enum, _train_test_split_ratio, _batch_size)
 
     # Load datasets
@@ -212,10 +212,10 @@ if __name__ == "__main__":
     # TODO: Add feature which makes it possible to specify each layers width
     snn = SparseNeuralNetwork(input_size=_input_size,
                               output_size=_output_size,
-                              amount_hidden_layers=5,
-                              max_connection_depth=6,
+                              amount_hidden_layers=20,
+                              max_connection_depth=21,
                               network_width=30,
-                              sparsity=0.80,
+                              sparsity=0,
                               skip_sequential_ratio=0.5,
                               log_level=LogLevel.SIMPLE)
     # snn = SparseNeuralNetwork(input_size=_input_size, output_size=_output_size, amount_hidden_layers=1, max_connection_depth=1, network_width=1,

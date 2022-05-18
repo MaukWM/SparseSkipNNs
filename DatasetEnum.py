@@ -7,3 +7,4 @@ class DatasetEnum(Enum):
     CIFAR10 = 1
     CIFAR100 = 2
     MNIST = 3
+    IMAGENET = 4
