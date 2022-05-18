@@ -212,23 +212,23 @@ if __name__ == "__main__":
     # TODO: Add feature which makes it possible to specify each layers width
     snn = SparseNeuralNetwork(input_size=_input_size,
                               output_size=_output_size,
-                              amount_hidden_layers=1,
-                              max_connection_depth=2,
-                              network_width=50,
-                              sparsity=0.8,
+                              amount_hidden_layers=5,
+                              max_connection_depth=6,
+                              network_width=30,
+                              sparsity=0.99,
                               skip_sequential_ratio=0.5,
                               log_level=LogLevel.SIMPLE)
     # snn = SparseNeuralNetwork(input_size=_input_size, output_size=_output_size, amount_hidden_layers=1, max_connection_depth=1, network_width=1,
     #                           sparsity=0.3, skip_sequential_ratio=1, log_level=LogLevel.SIMPLE)
 
     trainer = SparseTrainer(_train_dataset, _test_dataset, _trainloader, _testloader,
-                            epochs=10,
+                            epochs=200,
                             model=snn,
                             batch_size=_batch_size,
                             evolution_interval=1,
                             # Options: bottom_k, fixed_cutoff
                             pruning_type="cutoff",
-                            cutoff=0.01,
+                            cutoff=0.005,
                             prune_rate=0.1,
                             # Options: fixed_sparsity, percentage, no_regrowth
                             regrowth_type="percentage",

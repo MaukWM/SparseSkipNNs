@@ -433,7 +433,11 @@ class SparseNeuralNetwork(nn.Module):
                     n_k_activated[_current_k] += 1
                     break
 
-        sequential_activated = n_k_activated["1"]
+        if "1" in n_k_activated:
+            sequential_activated = n_k_activated["1"]
+        else:
+            sequential_activated = 0
+
         skip_activated = sum([n_k_activated[_k] for _k in n_k_activated.keys() if int(_k) >= 2])
 
         self.l(message=f"[EvolveNetwork - RegrowNetwork] Sequential regrown: {sequential_activated}, Skip regrown: {skip_activated}", level=LogLevel.SIMPLE)
