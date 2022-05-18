@@ -160,27 +160,27 @@ class SparseTrainer:
                                      val_accuracy=f"{average_val_accuracy:2f}%",)
                     pbar.update(1)
 
-                self.items[ItemKey.VALIDATION_LOSS.value].append(val_loss / i)
-                self.items[ItemKey.VALIDATION_ACCURACY.value].append(average_val_accuracy)
+            self.items[ItemKey.VALIDATION_LOSS.value].append(val_loss / i)
+            self.items[ItemKey.VALIDATION_ACCURACY.value].append(average_val_accuracy)
 
-                # Early stopping policy
-                if self.early_stopping_threshold is not None:
-                    if val_loss < lowest_val_loss:
-                        early_stopping_counter = 0
-                        lowest_val_loss = val_loss
-                    else:
-                        early_stopping_counter += 1
-                        if early_stopping_counter > self.early_stopping_threshold:
-                            break
+            # Early stopping policy
+            if self.early_stopping_threshold is not None:
+                if val_loss < lowest_val_loss:
+                    early_stopping_counter = 0
+                    lowest_val_loss = val_loss
+                else:
+                    early_stopping_counter += 1
+                    if early_stopping_counter > self.early_stopping_threshold:
+                        break
 
-                if self.evolution_interval is not None:
-                    if epoch % self.evolution_interval == 0:
-                        sparsity_information = self.model.get_and_update_sparsity_information()
+            if self.evolution_interval is not None:
+                if epoch % self.evolution_interval == 0:
+                    sparsity_information = self.model.get_and_update_sparsity_information()
 
-                        for item_key in sparsity_information.keys():
-                            self.items[item_key].append(sparsity_information[item_key])
+                    for item_key in sparsity_information.keys():
+                        self.items[item_key].append(sparsity_information[item_key])
 
-                        self.model.evolve_network()
+                    self.model.evolve_network()
 
         # Track the final sparsity state
         sparsity_information = self.model.get_and_update_sparsity_information()
@@ -212,17 +212,17 @@ if __name__ == "__main__":
     # TODO: Add feature which makes it possible to specify each layers width
     snn = SparseNeuralNetwork(input_size=_input_size,
                               output_size=_output_size,
-                              amount_hidden_layers=1,
-                              max_connection_depth=2,
-                              network_width=50,
-                              sparsity=0.8,
+                              amount_hidden_layers=5,
+                              max_connection_depth=6,
+                              network_width=30,
+                              sparsity=0.80,
                               skip_sequential_ratio=0.5,
                               log_level=LogLevel.SIMPLE)
     # snn = SparseNeuralNetwork(input_size=_input_size, output_size=_output_size, amount_hidden_layers=1, max_connection_depth=1, network_width=1,
     #                           sparsity=0.3, skip_sequential_ratio=1, log_level=LogLevel.SIMPLE)
 
     trainer = SparseTrainer(_train_dataset, _test_dataset, _trainloader, _testloader,
-                            epochs=10,
+                            epochs=70,
                             model=snn,
                             batch_size=_batch_size,
                             evolution_interval=1,
@@ -234,7 +234,7 @@ if __name__ == "__main__":
                             regrowth_type="percentage",
                             regrowth_ratio=0.5,
                             regrowth_percentage=0.1,
-                            lr=3e-3,
+                            lr=5e-3,
                             early_stopping_threshold=10,
                             # Options: l1, l2
                             decay_type="l1",
