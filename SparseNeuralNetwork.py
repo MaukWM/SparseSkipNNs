@@ -248,8 +248,6 @@ class SparseNeuralNetwork(nn.Module):
         # TODO: Sorting is expensive, follow the paper that calculated some threshold so it's O(N) where N = all weights
         weight_coordinates.sort(key=lambda x: x[5])
         _end_sorting = time.time()
-        # print(len(weight_coordinates), weight_coordinates)
-        # TODO: Add logging here for amount of weight coordinates, or add logging for currenty sparsity and targets
         self.l(message=f"[EvolveNetwork - PruneNetwork] len(weight_coordinates)={len(weight_coordinates)}, time_to_sort={_end_sorting - _start_sorting}s", level=LogLevel.SIMPLE)
 
         if len(weight_coordinates) == 0:
@@ -347,8 +345,17 @@ class SparseNeuralNetwork(nn.Module):
                 _sequential_activated = 0
             _skip_activated = sum([n_k_activated[_k] for _k in n_k_activated.keys() if int(_k) >= 2])
 
-            if _skip_activated > _sequential_activated:
-                _layer_name_list = sequential_layer_names
+            # Decide whether to regrow a sequential or skip connection depending on ratio and n weight types activated
+            if n_weights_activated > 0:
+                if _sequential_activated / n_weights_activated > regrow_ratio:
+                    _layer_name_list = skip_layer_names
+                elif _sequential_activated / n_weights_activated < regrow_ratio:
+                    _layer_name_list = sequential_layer_names
+                else:
+                    if random.random() < regrow_ratio:
+                        _layer_name_list = sequential_layer_names
+                    else:
+                        _layer_name_list = skip_layer_names
             else:
                 if random.random() < regrow_ratio:
                     _layer_name_list = sequential_layer_names

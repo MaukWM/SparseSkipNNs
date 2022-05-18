@@ -166,7 +166,7 @@ class SparseTrainer:
 if __name__ == "__main__":
     _train_test_split_ratio = 0.8
     _batch_size = 512 * 4
-    _dataset_enum = DatasetEnum.CIFAR10
+    _dataset_enum = DatasetEnum.MNIST
     data_loader_initializer = DataLoaderInitializer(_dataset_enum, _train_test_split_ratio, _batch_size)
 
     # Load datasets
@@ -180,14 +180,14 @@ if __name__ == "__main__":
     # TODO: Add analysis for sparsity for k
 
     # TODO: Add feature which makes it possible to specify each layers width
-    # snn = SparseNeuralNetwork(input_size=_input_size, output_size=_output_size, amount_hidden_layers=12, max_connection_depth=13, network_width=5,
-    #                           sparsity=0.3, skip_sequential_ratio=0.5, log_level=LogLevel.SIMPLE)
-    snn = SparseNeuralNetwork(input_size=_input_size, output_size=_output_size, amount_hidden_layers=1, max_connection_depth=1, network_width=1,
-                              sparsity=0.3, skip_sequential_ratio=1, log_level=LogLevel.SIMPLE)
+    snn = SparseNeuralNetwork(input_size=_input_size, output_size=_output_size, amount_hidden_layers=1, max_connection_depth=2, network_width=50,
+                              sparsity=0.5, skip_sequential_ratio=0.5, log_level=LogLevel.SIMPLE)
+    # snn = SparseNeuralNetwork(input_size=_input_size, output_size=_output_size, amount_hidden_layers=1, max_connection_depth=1, network_width=1,
+    #                           sparsity=0.3, skip_sequential_ratio=1, log_level=LogLevel.SIMPLE)
 
     trainer = SparseTrainer(_train_dataset, _test_dataset, _trainloader, _testloader,
-                            epochs=3, model=snn, batch_size=_batch_size, evolution_interval=1,
-                            prune_rate=0.3, keep_skip_sequential_ratio_same=False, lr=2e-3, early_stopping_threshold=10)
+                            epochs=50, model=snn, batch_size=_batch_size, evolution_interval=1,
+                            prune_rate=0.1, keep_skip_sequential_ratio_same=False, lr=2e-3, early_stopping_threshold=10)
 
     trainer.train()
     trainer.model.eval()
