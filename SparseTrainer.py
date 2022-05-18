@@ -184,7 +184,9 @@ class SparseTrainer:
 
         # Track the final sparsity state
         sparsity_information = self.model.get_and_update_sparsity_information()
-        self.items[item_key].append(sparsity_information[item_key])
+
+        for item_key in sparsity_information.keys():
+            self.items[item_key].append(sparsity_information[item_key])
 
         _train_end = time.time()
 
@@ -220,7 +222,7 @@ if __name__ == "__main__":
     #                           sparsity=0.3, skip_sequential_ratio=1, log_level=LogLevel.SIMPLE)
 
     trainer = SparseTrainer(_train_dataset, _test_dataset, _trainloader, _testloader,
-                            epochs=40,
+                            epochs=10,
                             model=snn,
                             batch_size=_batch_size,
                             evolution_interval=1,
