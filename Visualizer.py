@@ -37,7 +37,7 @@ class Visualizer:
 
     def plot_k_evolution_graphs(self):
         # TODO: Split function into generalized method for 3 different distributions
-        _xs = np.arange(start=0, stop=len(self.trainer_items[ItemKey.N_ACTIVE_CONNECTIONS.value]) * self.trainer.evolution_interval, step=self.trainer.evolution_interval)
+        _xs = np.arange(start=0, stop=(len(self.trainer_items[ItemKey.N_ACTIVE_CONNECTIONS.value]) + 1) * self.trainer.evolution_interval, step=self.trainer.evolution_interval)
 
         k_n_dists = util.ld_to_dl(self.trainer_items[ItemKey.K_N_DISTRIBUTION.value])
         k_sparsity_dists = util.ld_to_dl(self.trainer_items[ItemKey.K_SPARSITY_DISTRIBUTION.value])

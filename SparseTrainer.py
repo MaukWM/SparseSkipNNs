@@ -175,12 +175,16 @@ class SparseTrainer:
 
                 if self.evolution_interval is not None:
                     if epoch % self.evolution_interval == 0:
-                        self.model.evolve_network()
-
                         sparsity_information = self.model.get_and_update_sparsity_information()
 
                         for item_key in sparsity_information.keys():
                             self.items[item_key].append(sparsity_information[item_key])
+
+                        self.model.evolve_network()
+
+        # Track the final sparsity state
+        sparsity_information = self.model.get_and_update_sparsity_information()
+        self.items[item_key].append(sparsity_information[item_key])
 
         _train_end = time.time()
 
