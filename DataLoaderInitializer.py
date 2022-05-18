@@ -68,15 +68,31 @@ class DataLoaderInitializer:
         self.test_dataset = torchvision.datasets.MNIST('./data', train=False, download=True, transform=transform)
         self.testloader = torch.utils.data.DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=True)
 
+    def initialize_imagenet_dataloader(self):
+        transform = transforms.Compose(
+            [transforms.ToTensor(),
+             torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                              std=[0.229, 0.224, 0.225]),
+             transforms.Lambda(lambda x: torch.flatten(x))])
+
+        self.train_dataset = torchvision.datasets.ImageNet('./data', train=True, download=True, transform=transform)
+        self.trainloader = torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True)
+
+        self.test_dataset = torchvision.datasets.ImageNet('./data', train=False, download=True, transform=transform)
+        self.testloader = torch.utils.data.DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=True)
+
     def initialize_dataloader(self):
         if self.dataset_enum == DatasetEnum.SINEWAVE:
             self.initialize_sine_wave_dataloader()
 
-        elif self.dataset_enum == DatasetEnum.CIFAR10 or self.dataset_enum == DatasetEnum.CIFAR100:
+        if self.dataset_enum == DatasetEnum.CIFAR10 or self.dataset_enum == DatasetEnum.CIFAR100:
             self.initialize_cifar_dataloader()
 
         if self.dataset_enum == DatasetEnum.MNIST:
             self.initialize_mnist_dataloader()
+
+        if self.dataset_enum == DatasetEnum.IMAGENET:
+            self.initialize_imagenet_dataloader()
 
     def get_datasets_and_dataloaders(self):
         return self.train_dataset, self.test_dataset, self.trainloader, self.testloader

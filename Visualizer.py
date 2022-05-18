@@ -53,7 +53,16 @@ class Visualizer:
         plt.show()
 
         plt.title("Sparsity (by k) change for k")
-        # plt.ylim(0, 1)
+        plt.xlabel("Epoch")
+        plt.ylabel("Sparsity")
+        plt.grid()
+        for k in k_sparsity_dists.keys():
+            plt.plot(_xs, k_sparsity_dists[k], label=f"k={k}")
+        plt.legend()
+        plt.show()
+
+        plt.title("Sparsity (by k) change for k")
+        plt.ylim(0, 1)
         plt.xlabel("Epoch")
         plt.ylabel("Sparsity")
         plt.grid()
@@ -63,7 +72,16 @@ class Visualizer:
         plt.show()
 
         plt.title("Sparsity (by max seq) change for k")
-        # plt.ylim(0, 1)
+        plt.xlabel("Epoch")
+        plt.ylabel("Sparsity")
+        plt.grid()
+        for k in k_sparsity_by_max_seq_dists.keys():
+            plt.plot(_xs, k_sparsity_by_max_seq_dists[k], label=f"k={k}")
+        plt.legend()
+        plt.show()
+
+        plt.title("Sparsity (by max seq) change for k")
+        plt.ylim(0, 1)
         plt.xlabel("Epoch")
         plt.ylabel("Sparsity")
         plt.grid()
@@ -81,6 +99,16 @@ class Visualizer:
         plt.grid()
         plt.bar(final_k_n_dist.keys(), final_k_n_dist.values(), label="Final distribution", width=0.7)
         plt.bar(initial_k_n_dist.keys(), initial_k_n_dist.values(), label="Initial distribution", width=0.6)
+        plt.legend()
+        plt.show()
+
+        plt.title(plot_title)
+        final_k_n_dist = k_n_dist_values[len(k_n_dist_values) - 1]
+        initial_k_n_dist = k_n_dist_values[0]
+
+        plt.grid()
+        plt.plot(final_k_n_dist.keys(), final_k_n_dist.values(), label="Final distribution")
+        plt.plot(initial_k_n_dist.keys(), initial_k_n_dist.values(), label="Initial distribution")
         plt.legend()
         plt.show()
 
