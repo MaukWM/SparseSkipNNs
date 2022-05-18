@@ -53,7 +53,7 @@ class Visualizer:
         plt.show()
 
         plt.title("Sparsity (by k) change for k")
-        plt.ylim(0, 1)
+        # plt.ylim(0, 1)
         plt.xlabel("Epoch")
         plt.ylabel("Sparsity")
         plt.grid()
@@ -63,7 +63,7 @@ class Visualizer:
         plt.show()
 
         plt.title("Sparsity (by max seq) change for k")
-        plt.ylim(0, 1)
+        # plt.ylim(0, 1)
         plt.xlabel("Epoch")
         plt.ylabel("Sparsity")
         plt.grid()

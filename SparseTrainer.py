@@ -228,7 +228,7 @@ if __name__ == "__main__":
                             evolution_interval=1,
                             # Options: bottom_k, fixed_cutoff
                             pruning_type="cutoff",
-                            cutoff=0.01,
+                            cutoff=0.005,
                             prune_rate=0.1,
                             # Options: fixed_sparsity, percentage, no_regrowth
                             regrowth_type="percentage",
