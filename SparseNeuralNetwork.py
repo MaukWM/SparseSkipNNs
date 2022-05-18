@@ -51,13 +51,12 @@ class SparseNeuralNetwork(nn.Module):
         self.l = lambda level, message: print(message) if level >= self.log_level else None
 
         # Initialize evolution variables, before training starts these must be initialized by the Trainer
-        self.keep_skip_sequential_ratio_same = None
         self.prune_rate = None
         self.cutoff = None
+        # A regrowth type on a ratio implies we keep the sparsity fixed
         self.regrowth_type = None
         self.regrowth_ratio = None
         self.regrowth_percentage = None
-        self.fixed_sparsity = True
 
         # TODO: Add regrowth types
         # TODO: Add regrowth type that adds a percentage on top of current k weights (per skip/sequential)? This way the network can become sparse at will
@@ -237,7 +236,7 @@ class SparseNeuralNetwork(nn.Module):
 
     def prune_network(self):
         self.l(
-            message=f"[EvolveNetwork - Pre-pruning] Pre-pruning Overall Sparsity: {self.n_active_connections / self.n_max_sequential_connections}, Pre-pruning Skip Sparsity: {1 - self.n_active_skip_connections / self.n_max_sequential_connections}, Pre-pruning Sequential Sparsity: {1 - self.n_active_seq_connections / self.n_max_sequential_connections}",
+            message=f"[EvolveNetwork - Pre-pruning] Pre-pruning Overall Sparsity: {1 - self.n_active_connections / self.n_max_sequential_connections}, Pre-pruning Skip Sparsity: {1 - self.n_active_skip_connections / self.n_max_sequential_connections}, Pre-pruning Sequential Sparsity: {1 - self.n_active_seq_connections / self.n_max_sequential_connections}",
             level=LogLevel.SIMPLE)
         self.eval()
         # --- Prune n smallest weights ---
@@ -322,31 +321,22 @@ class SparseNeuralNetwork(nn.Module):
         self.l(message="=============== [EvolveNetwork - End] =================", level=LogLevel.SIMPLE)
 
     def regrow_network(self):
-        if self.regrowth_type == "ratio:":
-            # --- Regrow n weights ---
-            if self.keep_skip_sequential_ratio_same:
-                n_new_sequential_connections = np.clip(self.n_target_sequential_connections - self.n_active_seq_connections,
-                                                       0, None)
-                n_new_skip_connections = np.clip(self.n_target_skip_connections - self.n_active_skip_connections, 0, None)
-                self.regrow_connections_by_ratio(n_new_sequential_connections, n_new_skip_connections)
-            else:
-                n_new_connections = np.clip(self.n_target_active_connections - self.n_active_connections, 0, None)
-                self.regrow_connections_anywhere(n_new_connections)
+        if self.regrowth_type == "fixed_sparsity":
+            n_new_connections = np.clip(self.n_target_active_connections - self.n_active_connections, 0, None)
+        elif self.regrowth_type == "percentage":
+            n_new_connections = round(self.n_active_connections * self.regrowth_percentage)
+        elif self.regrowth_type == "no_regrowth":
+            return
+        else:
+            raise ValueError(f"No valid regrowth type was given: {self.regrowth_type}")
 
-    def regrow_connections_by_ratio(self, n_sequential_to_regrow, n_skip_to_regrow):
-        self.regrow_on_layer_name_list(n_sequential_to_regrow, self.sequential_layer_names)
-        self.regrow_on_layer_name_list(n_skip_to_regrow, self.skip_layer_names)
-
-    def regrow_connections_anywhere(self, n_new_connections, equal_regrowth=True):
         if self.max_connection_depth > 1:
-            if equal_regrowth:
-                self.regrow_by_ratio(n_new_connections, self.sequential_layer_names, self.skip_layer_names)
-            else:
-                self.regrow_on_layer_name_list(n_new_connections, self.sequential_layer_names + self.skip_layer_names)
+            self.regrow_by_ratio(n_new_connections, self.sequential_layer_names, self.skip_layer_names)
         else:
             self.regrow_on_layer_name_list(n_new_connections, self.sequential_layer_names)
 
-    def regrow_by_ratio(self, n_to_regrow, sequential_layer_names, skip_layer_names, max_iter_ratio=2, max_iter_connection_growth=20):
+    def regrow_by_ratio(self, n_to_regrow, sequential_layer_names, skip_layer_names, max_iter_ratio=2,
+                        max_iter_connection_growth=20):
         """
         Regrow connections by a given ratio.
         :param n_to_regrow: N connections to regrow
@@ -380,17 +370,17 @@ class SparseNeuralNetwork(nn.Module):
 
             # Decide whether to regrow a sequential or skip connection depending on ratio and n weight types activated
             if n_weights_activated > 0:
-                if _sequential_activated / n_weights_activated > self.regrow_ratio:
+                if _sequential_activated / n_weights_activated > self.regrowth_ratio:
                     _layer_name_list = skip_layer_names
-                elif _sequential_activated / n_weights_activated < self.regrow_ratio:
+                elif _sequential_activated / n_weights_activated < self.regrowth_ratio:
                     _layer_name_list = sequential_layer_names
                 else:
-                    if random.random() < self.regrow_ratio:
+                    if random.random() < self.regrowth_ratio:
                         _layer_name_list = sequential_layer_names
                     else:
                         _layer_name_list = skip_layer_names
             else:
-                if random.random() < self.regrow_ratio:
+                if random.random() < self.regrowth_ratio:
                     _layer_name_list = sequential_layer_names
                 else:
                     _layer_name_list = skip_layer_names

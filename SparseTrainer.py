@@ -46,6 +46,8 @@ class SparseTrainer:
             raise ValueError("If pruning type \"bottom_k\" is used, a prune rate must be specified")
         if pruning_type == "cutoff" and cutoff is None:
             raise ValueError("If pruning type \"cutoff\" is used, a cutoff must be specified")
+        if regrowth_type == "percentage" and regrowth_percentage is None:
+            raise ValueError("If regrowth type \"percentage\" is used, a regrowth_percentage must be specified")
 
         # Initialize dataset and dataloaders
         self.train_dataset, self.test_dataset = train_dataset, test_dataset
@@ -56,11 +58,9 @@ class SparseTrainer:
         self.model.pruning_type = pruning_type
         self.model.prune_rate = prune_rate
         self.model.cutoff = cutoff
-        self.model.keep_skip_sequential_ratio_same = keep_skip_sequential_ratio_same
         self.model.regrowth_type = regrowth_type
         self.model.regrowth_ratio = regrowth_ratio
         self.model.regrowth_percentage = regrowth_percentage
-        self.model.fixed_sparsity = fixed_sparsity
 
         # Initialize dict that keeps track of data over training TODO: Make dynamic
         self.items = dict()
@@ -231,12 +231,10 @@ if __name__ == "__main__":
                             pruning_type="cutoff",
                             cutoff=0.01,
                             prune_rate=0.1,
-                            # Options: ratio, percentage_active
-                            regrowth_type="ratio",
-                            regrowth_ratio=0.9,
+                            # Options: fixed_sparsity, percentage, no_regrowth
+                            regrowth_type="percentage",
+                            regrowth_ratio=0.5,
                             regrowth_percentage=0.1,
-                            fixed_sparsity=True,
-                            keep_skip_sequential_ratio_same=False,
                             lr=2e-3,
                             early_stopping_threshold=10,
                             # Options: l1, l2
