@@ -90,6 +90,8 @@ class Visualizer:
         plt.legend()
         plt.show()
 
+    # TODO: Add a tracker and plot the amount of connections per layer
+    # TODO: Add a tracker and plot the amount of connections per neuron(?)
     @staticmethod
     def plot_k_distribution(k_n_dist_values, plot_title):
         plt.title(plot_title)
@@ -97,8 +99,8 @@ class Visualizer:
         initial_k_n_dist = k_n_dist_values[0]
 
         plt.grid()
-        plt.bar(final_k_n_dist.keys(), final_k_n_dist.values(), label="Final distribution", width=0.7)
-        plt.bar(initial_k_n_dist.keys(), initial_k_n_dist.values(), label="Initial distribution", width=0.6)
+        plt.bar(initial_k_n_dist.keys(), initial_k_n_dist.values(), label="Initial distribution", width=0.7)
+        plt.bar(final_k_n_dist.keys(), final_k_n_dist.values(), label="Final distribution", width=0.6)
         plt.legend()
         plt.show()
 
