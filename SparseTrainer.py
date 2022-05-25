@@ -61,24 +61,15 @@ class SparseTrainer:
         for item_key in ItemKey:
             self.items[item_key.value] = []
 
-        # Distribution images, used with SineWave dataset. Handy for getting a historic overview of model performance
-        self.images = []
-        self.train_progress_image_interval = 100
-
-    def write_train_progress(self):
-        self.images[0].save('out/gif.gif', save_all=True, append_images=self.images[1:], optimize=False, duration=0.5)
-
     def train(self):
         _train_start = time.time()
-        # For prediction
-        # criterion = nn.MSELoss()
 
-        # For classification
+        # Classification loss
         criterion = nn.CrossEntropyLoss()
 
-        # optimizer = torch.optim.SGD(self.model.parameters(), lr=self.lr)
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 
+        # Early stopping variables
         early_stopping_counter = 0
         lowest_val_loss = math.inf
 
@@ -93,7 +84,6 @@ class SparseTrainer:
                 average_val_accuracy = 0
 
                 # Train
-                # with tqdm.tqdm(self.train_generator, unit="batch") as tepoch:
                 i = 0
                 self.model.train()
                 for batch in self.trainloader:
@@ -104,8 +94,6 @@ class SparseTrainer:
                     pred_ys = self.model(inp_xs)
                     loss = criterion(pred_ys, true_ys)
 
-                    # TODO: Add a weight decay type "l1"/"l2" and None for nothing
-                    # Apply weight decay (L1/L2)
                     if self.weight_decay_lambda is not None:
                         if self.decay_type == "l1":
                             norm = sum(p.abs().sum() for p in self.model.parameters())
@@ -137,8 +125,7 @@ class SparseTrainer:
                 self.items[ItemKey.TRAINING_LOSS.value].append(train_loss / i)
                 self.items[ItemKey.TRAINING_ACCURACY.value].append(average_train_accuracy)
 
-            # Calculate validation
-            # with tqdm.tqdm(self.test_generator, unit="batch") as tepoch:
+                # Calculate validation
                 i = 0
                 self.model.eval()
                 for batch in self.testloader:
@@ -196,7 +183,7 @@ class SparseTrainer:
 if __name__ == "__main__":
     _train_test_split_ratio = 0.8
     _batch_size = 512 * 4
-    _dataset_enum = DatasetEnum.CIFAR100
+    _dataset_enum = DatasetEnum.CIFAR10
     data_loader_initializer = DataLoaderInitializer(_dataset_enum, _train_test_split_ratio, _batch_size)
 
     # Load datasets
@@ -212,17 +199,15 @@ if __name__ == "__main__":
     # TODO: Add feature which makes it possible to specify each layers width
     snn = SparseNeuralNetwork(input_size=_input_size,
                               output_size=_output_size,
-                              amount_hidden_layers=20,
-                              max_connection_depth=21,
-                              network_width=30,
-                              sparsity=0,
+                              amount_hidden_layers=2,
+                              max_connection_depth=3,
+                              network_width=35,
+                              sparsity=0.5,
                               skip_sequential_ratio=0.5,
                               log_level=LogLevel.SIMPLE)
-    # snn = SparseNeuralNetwork(input_size=_input_size, output_size=_output_size, amount_hidden_layers=1, max_connection_depth=1, network_width=1,
-    #                           sparsity=0.3, skip_sequential_ratio=1, log_level=LogLevel.SIMPLE)
 
     trainer = SparseTrainer(_train_dataset, _test_dataset, _trainloader, _testloader,
-                            epochs=70,
+                            epochs=200,
                             model=snn,
                             batch_size=_batch_size,
                             evolution_interval=1,
@@ -242,18 +227,8 @@ if __name__ == "__main__":
 
     trainer.train()
     trainer.model.eval()
-    # for name, param in training.model.named_parameters():
-    #     print(name, param)
 
     visualizer = Visualizer.Visualizer(trainer)
     visualizer.visualize_all()
 
     # Investigate with up to max k skip connections, to what distribution of k's the network prunes itself
-
-    # print(training.images)
-
-    # SineWave.plot_model_distribution(trainer.model)
-
-    # trainer.write_train_progress()
-
-    # SineWave.plot_model_distribution(training.model)

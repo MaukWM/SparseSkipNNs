@@ -23,10 +23,7 @@ class SparseNeuralNetwork(nn.Module):
     """
     def __init__(self, sparsity, max_connection_depth, amount_hidden_layers, network_width, input_size,
                  output_size, skip_sequential_ratio, log_level=LogLevel.VERBOSE):
-        # TODO: Add regularization L1/L2 to drive weights down
-
         # TODO: Currently the input is very large from CIFAR10, implement patches? See notes.
-
         super(SparseNeuralNetwork, self).__init__()
         if max_connection_depth < 1:
             raise ValueError(f"max_connection_depth must be >=1")
@@ -58,23 +55,11 @@ class SparseNeuralNetwork(nn.Module):
         self.regrowth_ratio = None
         self.regrowth_percentage = None
 
-        # TODO: Add regrowth types
-        # TODO: Add regrowth type that adds a percentage on top of current k weights (per skip/sequential)? This way the network can become sparse at will
-
         # Initialize network
         self.layers = nn.ModuleDict()
         self.initialize_network()
 
-        # Calculate amount of skip layer instances. TODO: Figure out the formula, it's not difficult but the current solution is inelegant
-        # print([name for name, _ in self.named_parameters() if name.split(".")[1] != "1" and "bias" not in name])
-        # self.n_skip_instances = len([name for name, _ in self.named_parameters() if LayerType.layer_name_to_layer_type(name) == LayerType.SKIP and "bias" not in name])
-
-        # print("start")
-        # for name, param in self.named_parameters():
-        #     print(name, param)
-        # print("end")
-
-        # Define activation functions used
+        # Define activation functions used, None is a linear summation of inputs
         self.hidden_activation_function = F.relu
         self.final_activation_function = None
 
@@ -88,16 +73,17 @@ class SparseNeuralNetwork(nn.Module):
         self.n_target_sequential_connections = round(self.n_target_active_connections * self.skip_sequential_ratio)
         self.n_target_skip_connections = round(self.n_target_active_connections * (1 - self.skip_sequential_ratio))
 
-        self.sequential_sparsity = 1 - self.n_target_sequential_connections / self.n_max_sequential_connections
-        self.skip_sparsity = 1
+        # Calculate target sparsities
+        self.sequential_target_sparsity = 1 - self.n_target_sequential_connections / self.n_max_sequential_connections
+        self.skip_target_sparsity = 1
         if self.max_connection_depth > 1:
-            self.skip_sparsity = 1 - self.n_target_skip_connections / self.n_max_skip_connections
+            self.skip_target_sparsity = 1 - self.n_target_skip_connections / self.n_max_skip_connections
 
+        # Log initial state of network
         self.l(message=f'\n\n[Max Connections] Max seq con={self.n_max_sequential_connections}, Max skip con={self.n_max_skip_connections}', level=LogLevel.SIMPLE)
         self.l(message=f'[Target Connections] Target act con={self.n_target_active_connections}, Target seq con={self.n_target_sequential_connections}, Target skip con={self.n_target_skip_connections}', level=LogLevel.SIMPLE)
-        self.l(message=f'[Target Sparsity] Target seq con sparsity={self.sequential_sparsity:.3f}, Target skip con sparsity={self.skip_sparsity:.3f}, Target skip con sparsity (by max seq)={1 - (self.n_target_skip_connections / self.n_max_sequential_connections):.3f}', level=LogLevel.SIMPLE)
+        self.l(message=f'[Target Sparsity] Target seq con sparsity={self.sequential_target_sparsity:.3f}, Target skip con sparsity={self.skip_target_sparsity:.3f}, Target skip con sparsity (by max seq)={1 - (self.n_target_skip_connections / self.n_max_sequential_connections):.3f}', level=LogLevel.SIMPLE)
 
-        # TODO: When initializing network and we enable cutoff pruning, initialize with everything above the cutoff
         # Initialize mask for sparsity
         self.masks = {}
         self.initialize_mask()
@@ -119,6 +105,10 @@ class SparseNeuralNetwork(nn.Module):
                 self.skip_layer_names.append(name)
 
     def move_weights_outside_cutoff(self):
+        """
+        This method moves all weights outside of the cutoff range. This is used so that the first evolution step does
+        not remove a large amount of weights initialized in the pruning range.
+        """
         with torch.no_grad():
             for name in self.masks.keys():
                 current_k = name.split(".")[1]
@@ -133,6 +123,9 @@ class SparseNeuralNetwork(nn.Module):
                                 self.layers[current_k][current_layer].weight[neuron_idx][weight_idx] -= self.cutoff
 
     def calculate_n_max_sequential_connections(self):
+        """
+        Calculate the maximum amount of sequential connections. Used for sparsity calculations.
+        """
         result = self.input_size * self.network_width
 
         for j in range(self.amount_hidden_layers - 1):
@@ -143,6 +136,9 @@ class SparseNeuralNetwork(nn.Module):
         return result
 
     def calculate_n_max_skip_connections(self):
+        """
+        Calculate the maximum amount of sequential connections. Used for sparsity calculations.
+        """
         result = 0
         for i in range(2, self.max_connection_depth + 1):
 
@@ -160,6 +156,9 @@ class SparseNeuralNetwork(nn.Module):
         return result
 
     def update_active_connection_info(self):
+        """
+        Update information tracking N active connections, used for sparsity calculations and evolutionary steps.
+        """
         self.n_active_seq_connections = 0
         self.n_active_skip_connections = 0
         for name, param in self.named_parameters():
@@ -204,6 +203,10 @@ class SparseNeuralNetwork(nn.Module):
         return result_by_n, result_by_sparsity, result_by_sparsity_by_max_seq
 
     def get_and_update_sparsity_information(self):
+        """
+        Update connectivity information in the network and track this data.
+        :return: Current sparsity information
+        """
         # Update n sequential and skip connections
         self.update_active_connection_info()
 
@@ -243,7 +246,7 @@ class SparseNeuralNetwork(nn.Module):
             message=f"[ActualizedN]        N active connections={self.n_active_connections}, N active sequential connections={self.n_active_seq_connections}, N active skip connections={self.n_active_skip_connections}",
             level=LogLevel.SIMPLE)
         self.l(
-            message=f"[TargetSparsity]     OverallSparsity={self.sparsity:.3f}, SequentialSparsity={self.sequential_sparsity:.3f}, SkipSparsity={self.skip_sparsity:.3f}, SparsityRatio={self.skip_sequential_ratio:.3f}, SkipSparsityByMaxSeq={self.sequential_sparsity - self.sparsity:.3f}",
+            message=f"[TargetSparsity]     OverallSparsity={self.sparsity:.3f}, SequentialSparsity={self.sequential_target_sparsity:.3f}, SkipSparsity={self.skip_target_sparsity:.3f}, SparsityRatio={self.skip_sequential_ratio:.3f}, SkipSparsityByMaxSeq={self.sequential_target_sparsity - self.sparsity:.3f}",
             level=LogLevel.SIMPLE)
         self.l(
             message=f"[ActualizedSparsity] OverallSparsity={actualized_overall_sparsity:.3f}, SequentialSparsity={actualized_sequential_sparsity:.3f}, SkipSparsity={actualized_skip_sparsity:.3f}, SparsityRatio={actualized_sparsity_ratio:.3f}, SkipSparsityByMaxSeq={actualized_skip_sparsity_by_max_seq:.3f}",
@@ -252,6 +255,9 @@ class SparseNeuralNetwork(nn.Module):
         return result
 
     def prune_network(self):
+        """
+        Prune the network according to different methods.
+        """
         _start_pruning = time.time()
         self.l(
             message=f"[EvolveNetwork - Pre-pruning] Pre-pruning Overall Sparsity: {1 - self.n_active_connections / self.n_max_sequential_connections:.3f}, Pre-pruning Skip Sparsity: {1 - self.n_active_skip_connections / self.n_max_sequential_connections:.3f}, Pre-pruning Sequential Sparsity: {1 - self.n_active_seq_connections / self.n_max_sequential_connections:.3f}",
@@ -327,7 +333,6 @@ class SparseNeuralNetwork(nn.Module):
 
         _end_pruning = time.time()
 
-        # TODO: Format these strings nicely (spacing and round floats to 2~3 decimals
         self.l(
             message=f"[EvolveNetwork - Post-pruning] Sequential connections pruned: {n_sequential_pruned}, Skip connections pruned: {n_skip_pruned}, [Time taken:{_end_pruning - _start_pruning:.2f}s]",
             level=LogLevel.SIMPLE)
@@ -336,14 +341,18 @@ class SparseNeuralNetwork(nn.Module):
             level=LogLevel.SIMPLE)
 
     def evolve_network(self):
+        """
+        Evolve the network
+        """
         self.l(message="\n\n=============== [EvolveNetwork - Start] ===============", level=LogLevel.SIMPLE)
         self.prune_network()
-
-        # Calculate how many new connections we need to meet the target sparsity
         self.regrow_network()
         self.l(message="=============== [EvolveNetwork - End] =================", level=LogLevel.SIMPLE)
 
     def regrow_network(self):
+        """
+        Regrow connections in the network depending on the method.
+        """
         if self.regrowth_type == "fixed_sparsity":
             n_new_connections = np.clip(self.n_target_active_connections - self.n_active_connections, 0, None)
         elif self.regrowth_type == "percentage":
@@ -387,7 +396,6 @@ class SparseNeuralNetwork(nn.Module):
                     level=LogLevel.SIMPLE)
                 break
 
-            # If we activated more k>1 connections don't randomly select but immediately choose a sequential layer, this way regrowth is agnostic of density (but may take longer)
             if "1" in n_k_activated.keys():
                 _sequential_activated = n_k_activated["1"]
             else:
@@ -411,7 +419,6 @@ class SparseNeuralNetwork(nn.Module):
                 else:
                     _layer_name_list = skip_layer_names
 
-            # We could add a feature where a distribution is giving with the sequential and skip layer name list, this allows us to specify which k's regrow more
             _mask_name = np.random.choice(_layer_name_list)
             _current_k = _mask_name.split(".")[1]
             _mask = self.masks[_mask_name]
@@ -441,9 +448,15 @@ class SparseNeuralNetwork(nn.Module):
         skip_activated = sum([n_k_activated[_k] for _k in n_k_activated.keys() if int(_k) >= 2])
 
         self.l(message=f"[EvolveNetwork - RegrowNetwork] Sequential regrown: {sequential_activated}, Skip regrown: {skip_activated}", level=LogLevel.SIMPLE)
-        # self.l(message=f"[EvolveNetwork - RegrowNetwork] N K's regrown: {n_k_activated}", level=LogLevel.SIMPLE)
+        self.l(message=f"[EvolveNetwork - RegrowNetwork] N K's regrown: {n_k_activated}", level=LogLevel.VERBOSE)
 
     def regrow_on_layer_name_list(self, n_to_regrow, layer_name_list, max_iter_ratio=4):
+        """
+        Given a list of layer names, regrow connections in these layers.
+        :param n_to_regrow: Amount of connections to regrow
+        :param layer_name_list: List of the layers in which we regrow
+        :param max_iter_ratio: Max iteration attempts per layer before moving on (higher values can mean larger computation times in denser networks)
+        """
         max_iter = n_to_regrow * max_iter_ratio
         n_weights_activated = 0
         n_k_activated = dict()
@@ -474,35 +487,48 @@ class SparseNeuralNetwork(nn.Module):
         self.l(message=f"[EvolveNetwork - RegrowNetwork] N K's regrown: {n_k_activated}", level=LogLevel.SIMPLE)
 
     def apply_mask(self):
+        """
+        Apply the mask to the network (must be performed after weight update iteration to guarantee sparsity)
+        :return:
+        """
+        # Make sure we don't track the gradient from mask application!!!
+        _is_training = self.training
+        if _is_training:
+            self.eval()
         for name, param in self.named_parameters():
             if "bias" in name:
                 continue
             param.data[~self.masks[name]] = 0
             # print(f"applying{name} {self.masks[name]} to {old_param_data} -> {param.data}")
+        if _is_training:
+            self.train()
 
     def initialize_mask(self):
+        """
+        Initialize a sparse topology
+        """
         for name, param in self.named_parameters():
             if name.endswith(".bias"):
                 continue
 
             # If this is a layer named layers.1.x.weight, it is a sequential layer
             if LayerType.layer_name_to_layer_type(name) == LayerType.SEQUENTIAL:
-                self.masks[name] = np.random.rand(*param.shape) > self.sequential_sparsity
+                self.masks[name] = np.random.rand(*param.shape) > self.sequential_target_sparsity
             # If this is not a layer named layers.1.x.weight, it is a skip layer
             else:
-                self.masks[name] = np.random.rand(*param.shape) > self.skip_sparsity
+                self.masks[name] = np.random.rand(*param.shape) > self.skip_target_sparsity
             self.masks[name] = torch.tensor(self.masks[name])
 
     def initialize_network(self):
+        """
+        Initialize the layers
+        """
         # Each iteration of this loop initializes connections for connection depth i.
         for i in range(1, self.max_connection_depth + 1):
-            # print(f'creating {i} skip layer')
-            # TODO: This will not work on skip depths equal to network depth
 
             # If i is larger (or equal) than the amount of hidden layers it's impossible to continue, so add a skip
             # connection from start to end and break out of the loop, we're done!
             if i > self.amount_hidden_layers:
-                # print(f'size 1')
                 self.layers[str(i)] = nn.ModuleList([nn.Linear(in_features=self.input_size, out_features=self.output_size)])
                 break
 
@@ -512,12 +538,14 @@ class SparseNeuralNetwork(nn.Module):
                 _layers.append(nn.Linear(in_features=self.network_width, out_features=self.network_width))
 
             _layers.append(nn.Linear(in_features=self.network_width, out_features=self.output_size))
-            # print(f'size {len(_layers)}')
             self.layers[str(i)] = _layers
-        # print(self.layers)
 
     def forward(self, _x):
-        # TODO: Verify correctness of forward pass
+        """
+        Forward pass
+        :param _x: Input
+        :return Output
+        """
         # Depending on skip_depth we keep track of all previously calculated xs
         # This is x_0 that is received by the first layer
         _xs = {0: _x}
@@ -543,7 +571,6 @@ class SparseNeuralNetwork(nn.Module):
                 else:
                     _new_x = _new_x + activation_function(self.layers[str(i + 1 - j)][j](_xs[j]))
                 # print(f"to {_new_x}")
-                # _new_x = _new_x + F.relu(self.layers[j](_xs[i - j]))
             _xs[i + 1] = _new_x
             # print(f'adding {_new_x} to {i + 1} key in _xs')
 
@@ -553,24 +580,3 @@ class SparseNeuralNetwork(nn.Module):
     def __repr__(self):
         return f"SparseNN={{sparsity={self.sparsity}, skip_depth={self.max_connection_depth}, network_depth={self.amount_hidden_layers}, " \
                f"network_width={self.network_width}}}"
-
-
-# if __name__ == "__main__":
-#
-#     input_size = 1
-#     snn = SparseNeuralNetwork(input_size=input_size, amount_hidden_layers=30, max_connection_depth=14, network_width=30,
-#                               sparsity=0, skip_sequential_ratio=0.5)
-#
-#     x = torch.rand((10, input_size))
-#
-#     snn.get_sparsities()
-
-    # print(snn.n_max_sequential_connections)
-
-    # print(x, x.dtype)
-    # print(snn(x))
-    # print(snn.layers)
-    # for name, param in snn.named_parameters():
-    #     # if param.requires_grad:
-    #     print(name, param.data)
-    # print(snn)
