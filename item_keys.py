@@ -18,5 +18,7 @@ class ItemKey(enum.Enum):
     K_N_DISTRIBUTION = "k_n_distribution"
     K_SPARSITY_DISTRIBUTION = "k_sparsity_distribution"
     K_SPARSITY_DISTRIBUTION_BY_MAX_SEQ = "k_sparsity_distribution_by_max_seq"
+    LAYER_OUTGOING_REMAINING_RATIO = "layer_outgoing_remaining_ratio"
+    LAYER_INCOMING_REMAINING_RATIO = "layer_incoming_remaining_ratio"
 
     # TODO: Add trackers for amount pruned at epoch

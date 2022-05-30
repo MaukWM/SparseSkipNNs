@@ -182,7 +182,7 @@ class SparseTrainer:
 
 if __name__ == "__main__":
     _train_test_split_ratio = 0.8
-    _batch_size = 512 * 4
+    _batch_size = 512 # * 4
     _dataset_enum = DatasetEnum.CIFAR10
     data_loader_initializer = DataLoaderInitializer(_dataset_enum, _train_test_split_ratio, _batch_size)
 
@@ -199,15 +199,15 @@ if __name__ == "__main__":
     # TODO: Add feature which makes it possible to specify each layers width
     snn = SparseNeuralNetwork(input_size=_input_size,
                               output_size=_output_size,
-                              amount_hidden_layers=2,
-                              max_connection_depth=3,
-                              network_width=35,
+                              amount_hidden_layers=10,
+                              max_connection_depth=5,
+                              network_width=100,
                               sparsity=0.5,
                               skip_sequential_ratio=0.5,
                               log_level=LogLevel.SIMPLE)
 
     trainer = SparseTrainer(_train_dataset, _test_dataset, _trainloader, _testloader,
-                            epochs=200,
+                            epochs=100,
                             model=snn,
                             batch_size=_batch_size,
                             evolution_interval=1,
@@ -220,10 +220,13 @@ if __name__ == "__main__":
                             regrowth_ratio=0.5,
                             regrowth_percentage=0.1,
                             lr=5e-3,
-                            early_stopping_threshold=10,
+                            early_stopping_threshold=4,
                             # Options: l1, l2
                             decay_type="l1",
-                            weight_decay_lambda=0.0001)
+                            weight_decay_lambda=0.00005)
+
+    # from torchsummary import summary
+    # summary(snn, (snn.input_size, ))
 
     trainer.train()
     trainer.model.eval()

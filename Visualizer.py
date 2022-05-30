@@ -22,6 +22,38 @@ class Visualizer:
             self.plot_sparsity_info()
             self.plot_k_distributions()
             self.plot_k_evolution_graphs()
+            self.plot_layer_ratio_info()
+
+    def plot_layer_ratio_info(self):
+        layer_outgoing_ratio = self.trainer_items[ItemKey.LAYER_OUTGOING_REMAINING_RATIO.value]
+        layer_incoming_ratio = self.trainer_items[ItemKey.LAYER_INCOMING_REMAINING_RATIO.value]
+
+        # First plot the initial and final layer ratios for outgoing connections
+        initial_layer_outgoing_ratio = layer_outgoing_ratio[0]
+        final_layer_outgoing_ratio = layer_outgoing_ratio[-1]
+        plt.title("Initial and final layer outgoing remaining ratio")
+        plt.xlabel("Layer")
+        plt.ylabel("Ratio")
+        plt.bar(initial_layer_outgoing_ratio.keys(), initial_layer_outgoing_ratio.values(), label="Initial distribution", width=0.7)
+        plt.bar(final_layer_outgoing_ratio.keys(), final_layer_outgoing_ratio.values(), label="Final distribution", width=0.6)
+        plt.grid()
+        plt.legend()
+        plt.show()
+
+        # First plot the initial and final layer ratios for outgoing connections
+        initial_layer_incoming_ratio = layer_incoming_ratio[0]
+        final_layer_incoming_ratio = layer_incoming_ratio[-1]
+        plt.title("Initial and final layer incoming remaining ratio")
+        plt.xlabel("Layer")
+        plt.ylabel("Ratio")
+        plt.bar(initial_layer_incoming_ratio.keys(), initial_layer_incoming_ratio.values(), label="Initial distribution", width=0.7)
+        plt.bar(final_layer_incoming_ratio.keys(), final_layer_incoming_ratio.values(), label="Final distribution", width=0.6)
+        plt.grid()
+        plt.legend()
+        plt.show()
+
+        # Plot the evolution over time
+        # plt.title("Evolution of layer remaining ratios TO DO: Better name")
 
     def plot_train_val_loss(self):
         plt.title("Training and validation loss")

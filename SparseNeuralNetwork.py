@@ -202,6 +202,54 @@ class SparseNeuralNetwork(nn.Module):
             result_by_sparsity_by_max_seq[k] = 1 - result_by_n[k] / self.n_max_sequential_connections
         return result_by_n, result_by_sparsity, result_by_sparsity_by_max_seq
 
+    def get_layer_distribution_info(self):
+        result_outgoing = dict()
+        result_incoming = dict()
+        max_outgoing_connections_per_layer = dict()
+        max_incoming_connections_per_layer = dict()
+
+        for name, param in self.named_parameters():
+            if "bias" in name:
+                continue
+
+            # Extract layer information
+            current_k = name.split(".")[1]
+            current_layer = name.split(".")[2]
+            target_layer = str(int(current_layer) + int(current_k))
+
+            if current_layer not in result_outgoing.keys():
+                result_outgoing[current_layer] = 0
+
+            if target_layer not in result_incoming.keys():
+                result_incoming[target_layer] = 0
+
+            # Make sure we also keep track of the max amount of outgoing connections, we we can calculate the ratio
+            if current_k == "1":
+                max_outgoing_connections_per_layer[current_layer] = self.masks[name].numel()
+                max_incoming_connections_per_layer[target_layer] = self.masks[name].numel()
+
+            # Count amount of active connections for this k
+            # print(f"{name} - LAYER{current_layer} - {torch.count_nonzero(self.masks[name]).item()}")
+            result_outgoing[current_layer] += torch.count_nonzero(self.masks[name]).item()
+            result_incoming[target_layer] += torch.count_nonzero(self.masks[name]).item()
+
+        # print("preres", result)
+        # print("maxout", max_outgoing_connections_per_layer)
+
+        for key in result_outgoing.keys():
+            result_outgoing[key] = result_outgoing[key] / max_outgoing_connections_per_layer[key]
+
+        # print("preres", result_incoming)
+        # print("maxinc", max_incoming_connections_per_layer)
+
+        for key in result_incoming.keys():
+            result_incoming[key] = result_incoming[key] / max_incoming_connections_per_layer[key]
+        # print("postres", result_incoming)
+
+        # print("postres", result)
+
+        return result_outgoing, result_incoming
+
     def get_and_update_sparsity_information(self):
         """
         Update connectivity information in the network and track this data.
@@ -211,6 +259,8 @@ class SparseNeuralNetwork(nn.Module):
         self.update_active_connection_info()
 
         k_n_distribution, k_sparsity_distribution, k_sparsity_distribution_by_max_seq = self.get_k_distribution_info()
+
+        layer_outgoing_remaining_ratio, layer_incoming_remaining_ratio = self.get_layer_distribution_info()
 
         # Calculate the actualized sparsity levels in the model
         actualized_overall_sparsity = 1 - (self.n_active_seq_connections + self.n_active_skip_connections) / self.n_max_sequential_connections
@@ -234,6 +284,8 @@ class SparseNeuralNetwork(nn.Module):
         result[ItemKey.K_N_DISTRIBUTION.value] = k_n_distribution
         result[ItemKey.K_SPARSITY_DISTRIBUTION.value] = k_sparsity_distribution
         result[ItemKey.K_SPARSITY_DISTRIBUTION_BY_MAX_SEQ.value] = k_sparsity_distribution_by_max_seq
+        result[ItemKey.LAYER_OUTGOING_REMAINING_RATIO.value] = layer_outgoing_remaining_ratio
+        result[ItemKey.LAYER_INCOMING_REMAINING_RATIO.value] = layer_incoming_remaining_ratio
 
         # Log information
         self.l(
@@ -344,7 +396,7 @@ class SparseNeuralNetwork(nn.Module):
         """
         Evolve the network
         """
-        self.l(message="\n\n=============== [EvolveNetwork - Start] ===============", level=LogLevel.SIMPLE)
+        self.l(message="\n=============== [EvolveNetwork - Start] ===============", level=LogLevel.SIMPLE)
         self.prune_network()
         self.regrow_network()
         self.l(message="=============== [EvolveNetwork - End] =================", level=LogLevel.SIMPLE)
