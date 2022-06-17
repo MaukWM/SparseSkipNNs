@@ -203,6 +203,7 @@ class SparseNeuralNetwork(nn.Module):
         return result_by_n, result_by_sparsity, result_by_sparsity_by_max_seq
 
     def get_layer_distribution_info(self):
+        # TODO: Extend this to keep track of all layer to layer connections into a dict. This allows us to analyze the ratio of skip and sequential connections on different incoming and outgoing ratios
         result_outgoing = dict()
         result_incoming = dict()
         max_outgoing_connections_per_layer = dict()
@@ -258,9 +259,13 @@ class SparseNeuralNetwork(nn.Module):
         # Update n sequential and skip connections
         self.update_active_connection_info()
 
+        # Get information on k depth connections
         k_n_distribution, k_sparsity_distribution, k_sparsity_distribution_by_max_seq = self.get_k_distribution_info()
 
+        # Get information on incoming/outgoing connections per layer
         layer_outgoing_remaining_ratio, layer_incoming_remaining_ratio = self.get_layer_distribution_info()
+
+        # TODO: Retrieve information on node connectivity, generate distribution of how connective the most connective nodes are and see how this might increase in networks with skip connections
 
         # Calculate the actualized sparsity levels in the model
         actualized_overall_sparsity = 1 - (self.n_active_seq_connections + self.n_active_skip_connections) / self.n_max_sequential_connections
@@ -298,7 +303,7 @@ class SparseNeuralNetwork(nn.Module):
             message=f"[ActualizedN]        N active connections={self.n_active_connections}, N active sequential connections={self.n_active_seq_connections}, N active skip connections={self.n_active_skip_connections}",
             level=LogLevel.SIMPLE)
         self.l(
-            message=f"[TargetSparsity]     OverallSparsity={self.sparsity:.3f}, SequentialSparsity={self.sequential_target_sparsity:.3f}, SkipSparsity={self.skip_target_sparsity:.3f}, SparsityRatio={self.skip_sequential_ratio:.3f}, SkipSparsityByMaxSeq={self.sequential_target_sparsity - self.sparsity:.3f}",
+            message=f"[TargetSparsity]     OverallSparsity={self.sparsity:.3f}, SequentialSparsity={self.sequential_target_sparsity:.3f}, SkipSparsity={self.skip_target_sparsity:.3f}, SparsityRatio={self.skip_sequential_ratio:.3f}, SkipSparsityByMaxSeq={1 - (self.sequential_target_sparsity - self.sparsity):.3f}",
             level=LogLevel.SIMPLE)
         self.l(
             message=f"[ActualizedSparsity] OverallSparsity={actualized_overall_sparsity:.3f}, SequentialSparsity={actualized_sequential_sparsity:.3f}, SkipSparsity={actualized_skip_sparsity:.3f}, SparsityRatio={actualized_sparsity_ratio:.3f}, SkipSparsityByMaxSeq={actualized_skip_sparsity_by_max_seq:.3f}",
@@ -427,7 +432,7 @@ class SparseNeuralNetwork(nn.Module):
         :param n_to_regrow: N connections to regrow
         :param sequential_layer_names: The names of the sequential layers available for regrowth
         :param skip_layer_names: The names of the skip layers available for regrowth
-        :param max_iter_ratio: max amount of iterations before stopping regrowth
+        :param max_iter_ratio: max amount of iterations by ratio before stopping regrowth
         :param max_iter_connection_growth: max amount of iterations when attempting to regrow in a specific layer, high numbers here will lead to very long evolution times on dense networks
 
         self.regrow_ratio: Regrowth ratio. 0.8 means 80% of regrowth will take place in sequential layers.
