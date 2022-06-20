@@ -30,6 +30,8 @@ class SparseTrainer:
         self.decay_type = decay_type
         self.weight_decay_lambda = weight_decay_lambda
 
+        if pruning_type is not None and pruning_type != "bottom_k" and pruning_type != "cutoff":
+            raise ValueError(f"Invalid pruning type specified: {pruning_type}")
         if decay_type is not None and weight_decay_lambda is None:
             raise ValueError("If weight decay is used, a weight decay lambda must be specified")
         if pruning_type == "bottom_k" and prune_rate is None:
@@ -199,9 +201,9 @@ if __name__ == "__main__":
     # TODO: Add feature which makes it possible to specify each layers width
     snn = SparseNeuralNetwork(input_size=_input_size,
                               output_size=_output_size,
-                              amount_hidden_layers=2,
+                              amount_hidden_layers=3,
                               max_connection_depth=3,
-                              network_width=35,
+                              network_width=100,
                               sparsity=0.5,
                               skip_sequential_ratio=0.5,
                               log_level=LogLevel.SIMPLE)
@@ -211,8 +213,8 @@ if __name__ == "__main__":
                             model=snn,
                             batch_size=_batch_size,
                             evolution_interval=1,
-                            # Options: bottom_k, fixed_cutoff
-                            pruning_type="cutoff",
+                            # Options: bottom_k, cutoff
+                            pruning_type="bottom_k",
                             cutoff=0.005,
                             prune_rate=0.1,
                             # Options: fixed_sparsity, percentage, no_regrowth

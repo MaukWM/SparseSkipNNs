@@ -50,6 +50,7 @@ class SparseNeuralNetwork(nn.Module):
         # Initialize evolution variables, before training starts these must be initialized by the Trainer
         self.prune_rate = None
         self.cutoff = None
+
         # A regrowth type on a ratio implies we keep the sparsity fixed
         self.regrowth_type = None
         self.regrowth_ratio = None
