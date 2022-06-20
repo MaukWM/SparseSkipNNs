@@ -9,9 +9,8 @@ from SineWave import SineWave
 
 class DataLoaderInitializer:
 
-    def __init__(self, dataset_enum, train_test_split_ratio, batch_size):
+    def __init__(self, dataset_enum, batch_size):
         self.dataset_enum = dataset_enum
-        self.train_test_split_ratio = train_test_split_ratio
         self.batch_size = batch_size
 
         self.train_dataset = None
@@ -25,9 +24,10 @@ class DataLoaderInitializer:
         _dataset = SineWave()
 
         # 0.8 means 80% train 20% test
+        train_test_split_ratio = 0.8
         self.train_dataset, self.test_dataset = random_split(_dataset,
-                                                   [round(len(_dataset) * self.train_test_split_ratio),
-                                                    round(len(_dataset) * (1 - self.train_test_split_ratio))])
+                                                   [round(len(_dataset) * train_test_split_ratio),
+                                                    round(len(_dataset) * (1 - train_test_split_ratio))])
 
         self.trainloader = DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True)
         self.testloader = DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=True)

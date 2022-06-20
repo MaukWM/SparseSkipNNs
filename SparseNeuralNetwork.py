@@ -9,6 +9,7 @@ import torch.nn.functional as F
 import numpy as np
 import random
 
+from Config import ModelConfig
 from LayerType import LayerType
 from LogLevel import LogLevel
 from item_keys import ItemKey
@@ -21,39 +22,51 @@ class SparseNeuralNetwork(nn.Module):
     skip_sequential_ratio=0.8 means 80% of the connections are aimed to be sequential
     prune_rate is the % of active connections we want to prune per evolutionary step
     """
-    def __init__(self, sparsity, max_connection_depth, amount_hidden_layers, network_width, input_size,
-                 output_size, skip_sequential_ratio, log_level=LogLevel.VERBOSE):
-        # TODO: Currently the input is very large from CIFAR10, implement patches? See notes.
+    def __init__(self, input_size, output_size, model_config: ModelConfig):
         super(SparseNeuralNetwork, self).__init__()
-        if max_connection_depth < 1:
-            raise ValueError(f"max_connection_depth must be >=1")
-        if max_connection_depth > amount_hidden_layers + 1:
-            raise ValueError(f"It's not possible to have a higher max_connection_depth than there are hidden_layers: {max_connection_depth}>{amount_hidden_layers + 1}")
-        if max_connection_depth == 1 and skip_sequential_ratio != 1:
-            raise ValueError(f"If the max_connection_depth is 1 (meaning we have a sequential only network), it is not possible to specify a skip-sequential ratio: {skip_sequential_ratio} != 1")
-        if sparsity >= 1 or sparsity < 0:
-            raise ValueError(f"Invalid sparsity {sparsity}, must be 0 <= sparsity < 1")
+        self.model_config = model_config
 
         # Set variables
-        self.sparsity = sparsity
-        self.max_connection_depth = max_connection_depth
-        self.amount_hidden_layers = amount_hidden_layers
-        self.network_width = network_width
+        self.sparsity = model_config.sparsity
+        self.max_connection_depth = model_config.max_connection_depth
+        self.n_hidden_layers = model_config.n_hidden_layers
+        self.network_width = model_config.network_width
         self.input_size = input_size
         self.output_size = output_size
-        self.skip_sequential_ratio = skip_sequential_ratio
+        self.skip_sequential_ratio = model_config.skip_sequential_ratio
 
         # Set logging
-        self.log_level = log_level
+        self.log_level = model_config.log_level
         self.l = lambda level, message: print(message) if level >= self.log_level else None
 
-        # Initialize evolution variables, before training starts these must be initialized by the Trainer
-        self.prune_rate = None
-        self.cutoff = None
+        # Set evolution parameters
+        self.pruning_type = model_config.pruning_type
+        self.prune_rate = model_config.prune_rate
+        self.cutoff = model_config.cutoff
         # A regrowth type on a ratio implies we keep the sparsity fixed
-        self.regrowth_type = None
-        self.regrowth_ratio = None
-        self.regrowth_percentage = None
+        self.regrowth_type = model_config.regrowth_type
+        self.regrowth_ratio = model_config.regrowth_ratio
+        self.regrowth_percentage = model_config.regrowth_percentage
+
+        # Evolution checks
+        if self.pruning_type is not None and self.pruning_type != "bottom_k" and self.pruning_type != "cutoff":
+            raise ValueError(f"Invalid pruning type specified: {self.pruning_type}")
+        if self.pruning_type == "bottom_k" and self.prune_rate is None:
+            raise ValueError("If pruning type \"bottom_k\" is used, a prune rate must be specified")
+        if self.pruning_type == "cutoff" and self.cutoff is None:
+            raise ValueError("If pruning type \"cutoff\" is used, a cutoff must be specified")
+        if self.regrowth_type == "percentage" and self.regrowth_percentage is None:
+            raise ValueError("If regrowth type \"percentage\" is used, a regrowth_percentage must be specified")
+
+        # Model checks
+        if self.max_connection_depth < 1:
+            raise ValueError(f"max_connection_depth must be >=1")
+        if self.max_connection_depth > self.n_hidden_layers + 1:
+            raise ValueError(f"It's not possible to have a higher max_connection_depth than there are hidden_layers: {self.max_connection_depth}>{self.n_hidden_layers + 1}")
+        if self.max_connection_depth == 1 and self.skip_sequential_ratio != 1:
+            raise ValueError(f"If the max_connection_depth is 1 (meaning we have a sequential only network), it is not possible to specify a skip-sequential ratio: {self.skip_sequential_ratio} != 1")
+        if self.sparsity >= 1 or self.sparsity < 0:
+            raise ValueError(f"Invalid sparsity {self.sparsity}, must be 0 <= sparsity < 1")
 
         # Initialize network
         self.layers = nn.ModuleDict()
@@ -128,7 +141,7 @@ class SparseNeuralNetwork(nn.Module):
         """
         result = self.input_size * self.network_width
 
-        for j in range(self.amount_hidden_layers - 1):
+        for j in range(self.n_hidden_layers - 1):
             result += self.network_width * self.network_width
 
         result += self.network_width * self.output_size
@@ -142,13 +155,13 @@ class SparseNeuralNetwork(nn.Module):
         result = 0
         for i in range(2, self.max_connection_depth + 1):
 
-            if i > self.amount_hidden_layers:
+            if i > self.n_hidden_layers:
                 result += self.input_size * self.output_size
                 break
 
             result += self.input_size * self.network_width
 
-            for j in range(self.amount_hidden_layers - i):
+            for j in range(self.n_hidden_layers - i):
                 result += self.network_width * self.network_width
 
             result += self.network_width * self.output_size
@@ -585,13 +598,13 @@ class SparseNeuralNetwork(nn.Module):
 
             # If i is larger (or equal) than the amount of hidden layers it's impossible to continue, so add a skip
             # connection from start to end and break out of the loop, we're done!
-            if i > self.amount_hidden_layers:
+            if i > self.n_hidden_layers:
                 self.layers[str(i)] = nn.ModuleList([nn.Linear(in_features=self.input_size, out_features=self.output_size)])
                 break
 
             _layers = nn.ModuleList([nn.Linear(in_features=self.input_size, out_features=self.network_width)])
 
-            for j in range(self.amount_hidden_layers - i):
+            for j in range(self.n_hidden_layers - i):
                 _layers.append(nn.Linear(in_features=self.network_width, out_features=self.network_width))
 
             _layers.append(nn.Linear(in_features=self.network_width, out_features=self.output_size))
@@ -607,9 +620,9 @@ class SparseNeuralNetwork(nn.Module):
         # This is x_0 that is received by the first layer
         _xs = {0: _x}
 
-        for i in range(self.amount_hidden_layers + 1):
+        for i in range(self.n_hidden_layers + 1):
             # print(f'performing calculatios on layer{i}')
-            if i == self.amount_hidden_layers:
+            if i == self.n_hidden_layers:
                 activation_function = self.final_activation_function
             else:
                 activation_function = self.hidden_activation_function
@@ -635,5 +648,5 @@ class SparseNeuralNetwork(nn.Module):
         return _xs[len(_xs) - 1]
 
     def __repr__(self):
-        return f"SparseNN={{sparsity={self.sparsity}, skip_depth={self.max_connection_depth}, network_depth={self.amount_hidden_layers}, " \
+        return f"SparseNN={{sparsity={self.sparsity}, skip_depth={self.max_connection_depth}, network_depth={self.n_hidden_layers}, " \
                f"network_width={self.network_width}}}"
