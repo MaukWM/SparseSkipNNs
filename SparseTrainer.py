@@ -30,6 +30,8 @@ class SparseTrainer:
         self.decay_type = decay_type
         self.weight_decay_lambda = weight_decay_lambda
 
+        if pruning_type is not None and pruning_type != "bottom_k" and pruning_type != "cutoff":
+            raise ValueError(f"Invalid pruning type specified: {pruning_type}")
         if decay_type is not None and weight_decay_lambda is None:
             raise ValueError("If weight decay is used, a weight decay lambda must be specified")
         if pruning_type == "bottom_k" and prune_rate is None:
