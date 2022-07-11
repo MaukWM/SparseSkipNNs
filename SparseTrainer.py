@@ -116,8 +116,8 @@ class SparseTrainer:
                     train_accuracy += torch.count_nonzero(torch.eq(true_ys, torch.argmax(pred_ys, dim=1))).item() / pred_ys.size()[0] * 100
                     average_train_accuracy = train_accuracy / i
 
-                    pbar.set_postfix(train_loss=f"{(train_loss / i):5f}",
-                                     train_accuracy=f"{average_train_accuracy:2f}%",
+                    pbar.set_postfix(train_loss=f"{(train_loss / i):.5f}",
+                                     train_accuracy=f"{average_train_accuracy:.2f}%",
                                      val_loss=f"0",
                                      val_accuracy=f"0%")
                     pbar.update(1)
@@ -145,21 +145,21 @@ class SparseTrainer:
                     val_accuracy += torch.count_nonzero(torch.eq(true_ys, torch.argmax(pred_ys, dim=1))).item() / pred_ys.size()[0] * 100
                     average_val_accuracy = val_accuracy / i
 
-                    pbar.set_postfix(train_loss=f"{self.items[ItemKey.TRAINING_LOSS.value][epoch]:5f}",
-                                     train_accuracy=f"{average_train_accuracy:2f}%",
-                                     val_loss=f"{(val_loss / i):5f}",
-                                     val_accuracy=f"{average_val_accuracy:2f}%",)
+                    pbar.set_postfix(train_loss=f"{self.items[ItemKey.TRAINING_LOSS.value][epoch]:.5f}",
+                                     train_accuracy=f"{average_train_accuracy:.2f}%",
+                                     val_loss=f"{(val_loss / i):.5f}",
+                                     val_accuracy=f"{average_val_accuracy:.2f}%",)
                     pbar.update(1)
 
             if average_val_accuracy > self.validation_accuracy_at_peak:
-                print(f"Model improved [{self.peak_epoch}, {self.validation_accuracy_at_peak:2f}%, {self.training_flops_at_peak:2e}"
-                      f", {self.inference_flops_at_peak:2e}] -> ", end="")
+                print(f"Model improved [{self.peak_epoch}, {self.validation_accuracy_at_peak:.2f}%, {self.training_flops_at_peak:.2e}"
+                      f", {self.inference_flops_at_peak:.2e}] -> ", end="")
                 self.validation_accuracy_at_peak = average_val_accuracy
                 self.peak_epoch = epoch
                 self.training_flops_at_peak = self.training_flops
                 self.inference_flops_at_peak = self.model.sparse_inferencing_flops
-                print(f"[{self.peak_epoch}, {self.validation_accuracy_at_peak:2f}$, {self.training_flops_at_peak:2e}"
-                      f", {self.inference_flops_at_peak:2e}]")
+                print(f"[{self.peak_epoch}, {self.validation_accuracy_at_peak:.2f}$, {self.training_flops_at_peak:.2e}"
+                      f", {self.inference_flops_at_peak:.2e}]")
 
             self.items[ItemKey.VALIDATION_LOSS.value].append(val_loss / i)
             self.items[ItemKey.VALIDATION_ACCURACY.value].append(average_val_accuracy)
@@ -191,9 +191,9 @@ class SparseTrainer:
 
         _train_end = time.time()
 
-        print(f"Total training time: {_train_end - _train_start:2f}s")
-        print(f"Final performance at epoch {self.peak_epoch}: Val_acc={self.validation_accuracy_at_peak:2f}%, Train_flops={self.training_flops:2e},"
-              f" Inference_flops={self.inference_flops_at_peak:2e}")
+        print(f"Total training time: {_train_end - _train_start:.2f}s")
+        print(f"Final performance at epoch {self.peak_epoch}: Val_acc={self.validation_accuracy_at_peak:.2f}%, Train_flops={self.training_flops:.2e},"
+              f" Inference_flops={self.inference_flops_at_peak:.2e}")
 
 
 if __name__ == "__main__":
