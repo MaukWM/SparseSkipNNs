@@ -102,6 +102,11 @@ class SparseNeuralNetwork(nn.Module):
         self.initialize_mask()
         self.apply_mask()
 
+        # FLOP calculation
+        self.dense_inferencing_flops = self.calculate_dense_inferencing_flops()
+        # print(f"{self.dense_inferencing_flops * model_config.sparsity}")
+        self.sparse_inferencing_flops = self.calculate_sparse_inferencing_flops()
+
         # Initialize n active connection trackers
         self.n_active_seq_connections = None
         self.n_active_skip_connections = None
@@ -116,6 +121,32 @@ class SparseNeuralNetwork(nn.Module):
                 self.sequential_layer_names.append(name)
             else:
                 self.skip_layer_names.append(name)
+
+    def calculate_dense_inferencing_flops(self):
+        """
+        Calculate how much flops a forward pass of a dense counterpart of the network requires.
+        """
+        result = 0
+        for name, param in self.named_parameters():
+            k = name.split(".")[1]
+            if k == "1":
+                if "bias" in name:
+                    result += param.shape[0]
+                else:
+                    result += param.shape[0] * param.shape[1]
+        return result
+
+    def calculate_sparse_inferencing_flops(self):
+        """
+        Calculate how much flops a forward pass of a dense counterpart of the network requires.
+        """
+        result = 0
+        for name, param in self.named_parameters():
+            if "bias" in name:
+                result += param.shape[0]
+            else:
+                result += param.shape[0] * param.shape[1] * (torch.count_nonzero(param) / param.numel())
+        return result.item()
 
     def move_weights_outside_cutoff(self):
         """
@@ -304,6 +335,9 @@ class SparseNeuralNetwork(nn.Module):
         result[ItemKey.K_SPARSITY_DISTRIBUTION_BY_MAX_SEQ.value] = k_sparsity_distribution_by_max_seq
         result[ItemKey.LAYER_OUTGOING_REMAINING_RATIO.value] = layer_outgoing_remaining_ratio
         result[ItemKey.LAYER_INCOMING_REMAINING_RATIO.value] = layer_incoming_remaining_ratio
+
+        # Update amount of flops required for new calculations
+        self.sparse_inferencing_flops = self.calculate_sparse_inferencing_flops()
 
         # Log information
         self.l(

@@ -34,6 +34,9 @@ class SparseTrainer:
         self.train_dataset, self.test_dataset = train_dataset, test_dataset
         self.trainloader, self.testloader = trainloader, testloader
 
+        # # Move to gpu
+        # self.trainloader.cuda(), self.testloader.cuda()
+
         # Set model and initialize model evolution parameters
         self.model = model
 
@@ -48,6 +51,15 @@ class SparseTrainer:
         self.items = dict()
         for item_key in ItemKey:
             self.items[item_key.value] = []
+
+        # FLOP Calculation
+        self.training_flops = 0
+
+        # Keep track of data at peak performance for evaluation
+        self.peak_epoch = 0
+        self.training_flops_at_peak = 0
+        self.validation_accuracy_at_peak = 0
+        self.inference_flops_at_peak = 0
 
     def train(self):
         _train_start = time.time()
@@ -110,6 +122,10 @@ class SparseTrainer:
                                      val_accuracy=f"0%")
                     pbar.update(1)
 
+                    # Calculate the training costs of this epoch
+                    self.training_flops += len(self.trainloader) * self.model.sparse_inferencing_flops * 3
+                    # print(f"tFLOPs {self.training_flops}")
+
                 self.items[ItemKey.TRAINING_LOSS.value].append(train_loss / i)
                 self.items[ItemKey.TRAINING_ACCURACY.value].append(average_train_accuracy)
 
@@ -134,6 +150,16 @@ class SparseTrainer:
                                      val_loss=f"{(val_loss / i):5f}",
                                      val_accuracy=f"{average_val_accuracy:2f}%",)
                     pbar.update(1)
+
+            if average_val_accuracy > self.validation_accuracy_at_peak:
+                print(f"Model improved [{self.peak_epoch}, {self.validation_accuracy_at_peak:2f}%, {self.training_flops_at_peak:2e}"
+                      f", {self.inference_flops_at_peak:2e}] -> ", end="")
+                self.validation_accuracy_at_peak = average_val_accuracy
+                self.peak_epoch = epoch
+                self.training_flops_at_peak = self.training_flops
+                self.inference_flops_at_peak = self.model.sparse_inferencing_flops
+                print(f"[{self.peak_epoch}, {self.validation_accuracy_at_peak:2f}$, {self.training_flops_at_peak:2e}"
+                      f", {self.inference_flops_at_peak:2e}]")
 
             self.items[ItemKey.VALIDATION_LOSS.value].append(val_loss / i)
             self.items[ItemKey.VALIDATION_ACCURACY.value].append(average_val_accuracy)
@@ -165,7 +191,9 @@ class SparseTrainer:
 
         _train_end = time.time()
 
-        print(f"Total training time: {_train_end - _train_start}s")
+        print(f"Total training time: {_train_end - _train_start:2f}s")
+        print(f"Final performance at epoch {self.peak_epoch}: Val_acc={self.validation_accuracy_at_peak:2f}%, Train_flops={self.training_flops:2e},"
+              f" Inference_flops={self.inference_flops_at_peak:2e}")
 
 
 if __name__ == "__main__":
@@ -210,6 +238,8 @@ if __name__ == "__main__":
     snn = SparseNeuralNetwork(input_size=_input_size,
                               output_size=_output_size,
                               model_config=model_config)
+
+    # snn.cuda()
 
     trainer = SparseTrainer(_train_dataset, _test_dataset, _trainloader, _testloader,
                             model=snn,
