@@ -73,6 +73,7 @@ class SparseNeuralNetwork(nn.Module):
         self.initialize_network()
 
         # Define activation functions used, None is a linear summation of inputs
+        # TODO: Implement Mish/Swish?
         self.hidden_activation_function = F.relu
         self.final_activation_function = None
 

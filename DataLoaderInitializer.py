@@ -9,8 +9,8 @@ from SineWave import SineWave
 
 class DataLoaderInitializer:
 
-    def __init__(self, dataset_enum, batch_size):
-        self.dataset_enum = dataset_enum
+    def __init__(self, dataset_name, batch_size):
+        self.dataset_name = dataset_name
         self.batch_size = batch_size
 
         self.train_dataset = None
@@ -38,7 +38,7 @@ class DataLoaderInitializer:
              transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
              transforms.Lambda(lambda x: torch.flatten(x))])
 
-        if self.dataset_enum == DatasetEnum.CIFAR10:
+        if self.dataset_name == "CIFAR10":
             self.train_dataset = torchvision.datasets.CIFAR10(root='./data', train=True,
                                                               download=True, transform=transform)
             self.test_dataset = torchvision.datasets.CIFAR10(root='./data', train=False,
@@ -82,16 +82,16 @@ class DataLoaderInitializer:
         self.testloader = torch.utils.data.DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=True)
 
     def initialize_dataloader(self):
-        if self.dataset_enum == DatasetEnum.SINEWAVE:
+        if self.dataset_name == "SINE":
             self.initialize_sine_wave_dataloader()
 
-        if self.dataset_enum == DatasetEnum.CIFAR10 or self.dataset_enum == DatasetEnum.CIFAR100:
+        if self.dataset_name == "CIFAR10" or self.dataset_name == "CIFAR100":
             self.initialize_cifar_dataloader()
 
-        if self.dataset_enum == DatasetEnum.MNIST:
+        if self.dataset_name == "MNIST":
             self.initialize_mnist_dataloader()
 
-        if self.dataset_enum == DatasetEnum.IMAGENET:
+        if self.dataset_name == "IMAGENET":
             self.initialize_imagenet_dataloader()
 
     def get_datasets_and_dataloaders(self):
