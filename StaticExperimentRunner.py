@@ -13,8 +13,10 @@ N_EXPERIMENTS_PER_CONFIG = 5
 
 loaded_datasets = {}
 
+
 def get_configs_from_file(file_path):
     with open(file_path, "rb") as config_file:
+        print(file_path)
         config = pickle.load(config_file)
         trainer_config = TrainerConfig(
             batch_size=config["trainer_config"]["batch_size"],
@@ -34,7 +36,7 @@ def get_configs_from_file(file_path):
             network_width=config["model_config"]["network_width"],
             sparsity=config["model_config"]["sparsity"],
             skip_sequential_ratio=config["model_config"]["skip_sequential_ratio"],
-            log_level=LogLevel.Simple,
+            log_level=LogLevel.SIMPLE,
             # Options: bottom_k, cutoff
             pruning_type=config["model_config"]["pruning_type"],
             cutoff=config["model_config"]["cutoff"],
@@ -67,10 +69,11 @@ for _experiment in experiments:
 
     trainer_config, model_config = get_configs_from_file(f"experiments/static/{experiment_dataset}/{_experiment}/config.pkl")
 
-    if loaded_datasets[trainer_config.dataset] is None:
+    if trainer_config.dataset not in loaded_datasets.keys():
         data_loader_initializer = DataLoaderInitializer(trainer_config.dataset, trainer_config.batch_size)
 
         # Load datasets
+        loaded_datasets[trainer_config.dataset] = {}
         loaded_datasets[trainer_config.dataset]["train_dataset"], loaded_datasets[trainer_config.dataset]["test_dataset"], loaded_datasets[trainer_config.dataset]["trainloader"], loaded_datasets[trainer_config.dataset]["testloader"] = data_loader_initializer.get_datasets_and_dataloaders()
 
     _train_dataset, _test_dataset, _trainloader, _testloader = loaded_datasets[trainer_config.dataset]["train_dataset"], loaded_datasets[trainer_config.dataset]["test_dataset"], loaded_datasets[trainer_config.dataset]["trainloader"], loaded_datasets[trainer_config.dataset]["testloader"]
