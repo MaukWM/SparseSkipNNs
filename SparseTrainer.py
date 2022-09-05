@@ -18,7 +18,7 @@ import Visualizer
 class SparseTrainer:
 
     def __init__(self, train_dataset, test_dataset, trainloader, testloader,
-                 model: SparseNeuralNetwork, trainer_config: TrainerConfig):
+                 model: SparseNeuralNetwork, trainer_config: TrainerConfig, l):
         self.trainer_config = trainer_config
 
         # Set training parameters
@@ -33,6 +33,9 @@ class SparseTrainer:
         # Initialize dataset and dataloaders
         self.train_dataset, self.test_dataset = train_dataset, test_dataset
         self.trainloader, self.testloader = trainloader, testloader
+
+        # Set logging
+        self.l = l
 
         # # Move to gpu
         # self.trainloader.cuda(), self.testloader.cuda()
@@ -152,14 +155,14 @@ class SparseTrainer:
                     pbar.update(1)
 
             if average_val_accuracy > self.validation_accuracy_at_peak:
-                print(f"Model improved [{self.peak_epoch}, {self.validation_accuracy_at_peak:.2f}%, {self.training_flops_at_peak:.2e}"
-                      f", {self.inference_flops_at_peak:.2e}] -> ", end="")
+                self.l(message=f"Model improved [{self.peak_epoch}, {self.validation_accuracy_at_peak:.2f}%, {self.training_flops_at_peak:.2e}"
+                      f", {self.inference_flops_at_peak:.2e}] -> ", end="", level=LogLevel.SIMPLE)
                 self.validation_accuracy_at_peak = average_val_accuracy
                 self.peak_epoch = epoch
                 self.training_flops_at_peak = self.training_flops
                 self.inference_flops_at_peak = self.model.sparse_inferencing_flops
-                print(f"[{self.peak_epoch}, {self.validation_accuracy_at_peak:.2f}$, {self.training_flops_at_peak:.2e}"
-                      f", {self.inference_flops_at_peak:.2e}]")
+                self.l(message=f"[{self.peak_epoch}, {self.validation_accuracy_at_peak:.2f}%, {self.training_flops_at_peak:.2e}"
+                      f", {self.inference_flops_at_peak:.2e}]", level=LogLevel.SIMPLE)
 
             self.items[ItemKey.VALIDATION_LOSS.value].append(val_loss / i)
             self.items[ItemKey.VALIDATION_ACCURACY.value].append(average_val_accuracy)
@@ -191,12 +194,14 @@ class SparseTrainer:
 
         _train_end = time.time()
 
-        print(f"Total training time: {_train_end - _train_start:.2f}s")
-        print(f"Final performance at epoch {self.peak_epoch}: Val_acc={self.validation_accuracy_at_peak:.2f}%, Train_flops={self.training_flops:.2e},"
-              f" Inference_flops={self.inference_flops_at_peak:.2e}")
+        self.l(message=f"Total training time: {_train_end - _train_start:.2f}s", level=LogLevel.SIMPLE)
+        self.l(message=f"Final performance at epoch {self.peak_epoch}: Val_acc={self.validation_accuracy_at_peak:.2f}%, Train_flops={self.training_flops:.2e},"
+              f" Inference_flops={self.inference_flops_at_peak:.2e}", level=LogLevel.SIMPLE)
 
 
 if __name__ == "__main__":
+    _log_level = LogLevel.SIMPLE
+
     trainer_config = TrainerConfig(
         batch_size=512,
         dataset=DatasetEnum.CIFAR10,
@@ -215,7 +220,7 @@ if __name__ == "__main__":
         network_width=100,
         sparsity=0,
         skip_sequential_ratio=0.5,
-        log_level=LogLevel.SIMPLE,
+        log_level=_log_level,
         # Options: bottom_k, cutoff
         pruning_type="cutoff",
         cutoff=0.001,
@@ -225,6 +230,8 @@ if __name__ == "__main__":
         regrowth_ratio=0.5,
         regrowth_percentage=0.10,
     )
+
+    l = lambda level, message: print(message) if level >= _log_level else None
 
     data_loader_initializer = DataLoaderInitializer(trainer_config.dataset, trainer_config.batch_size)
 
@@ -237,13 +244,15 @@ if __name__ == "__main__":
 
     snn = SparseNeuralNetwork(input_size=_input_size,
                               output_size=_output_size,
-                              model_config=model_config)
+                              model_config=model_config,
+                              l=l)
 
     # snn.cuda()
 
     trainer = SparseTrainer(_train_dataset, _test_dataset, _trainloader, _testloader,
                             model=snn,
-                            trainer_config=trainer_config)
+                            trainer_config=trainer_config,
+                            l=l)
 
     trainer.train()
     trainer.model.eval()

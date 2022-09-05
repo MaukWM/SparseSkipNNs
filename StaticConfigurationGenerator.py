@@ -1,4 +1,5 @@
-import pickle as pkl
+# import pickle as pkl
+import dill
 import os
 
 base_configuration = {
@@ -22,7 +23,7 @@ base_configuration = {
         "skip_sequential_ratio": None,
         "log_level": "SIMPLE",
         # Options: bottom_k, cutoff
-        "pruning_type": "cutoff",
+        "pruning_type": "bottom_k",
         "cutoff": 0.001,
         "prune_rate": 0.1,
         # Options: fixed_sparsity, percentage, no_regrowth
@@ -38,7 +39,7 @@ base_configuration = {
 # skip_sequential_ratio
 # max_connection_depth
 datasets = ["CIFAR10", "CIFAR100"]
-sparsities = [0, 0.25, 0.50, 0.75, 0.80, 0.85, 0.90, 0.95, 0.98]
+sparsities = [0.75, 0.80, 0.85, 0.90, 0.95, 0.98]
 ratios = [1.00, 0.90, 0.80, 0.70, 0.60, 0.50, 0.40, 0.30, 0.20, 0.10, 0.00]
 max_connection_depths = [1, 2, 3, 4]
 
@@ -65,6 +66,6 @@ for dataset in datasets:
                 if not os.path.exists(f"experiments/static/{dataset}/{directory_name}/config.pkl"):
                     print(f"creating experiments/static/{dataset}/{directory_name}/config.pkl")
                     with open(f"experiments/static/{dataset}/{directory_name}/config.pkl", "wb") as file:
-                        pkl.dump(config, file)
+                        dill.dump(config, file)
 
 

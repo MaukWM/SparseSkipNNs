@@ -1,4 +1,5 @@
-import pickle
+# import pickle
+import dill
 import os
 
 import numpy as np
@@ -16,8 +17,8 @@ loaded_datasets = {}
 
 def get_configs_from_file(file_path):
     with open(file_path, "rb") as config_file:
-        print(file_path)
-        config = pickle.load(config_file)
+        print(f"Starting experiments for {file_path}")
+        config = dill.load(config_file)
         trainer_config = TrainerConfig(
             batch_size=config["trainer_config"]["batch_size"],
             dataset=config["trainer_config"]["dataset"],
@@ -56,7 +57,7 @@ experiments = os.listdir("experiments/static/CIFAR10") + os.listdir("experiments
 
 for _experiment in experiments:
     experiment_dataset = _experiment.split("_")[0].split("-")[1]
-    results = [result for result in os.listdir(f"experiments/static/{experiment_dataset}/{_experiment}") if "result" in result]
+    results = [result for result in os.listdir(f"experiments/static/{experiment_dataset}/{_experiment}") if ".result" in result]
     n_results = len(results)
     if n_results > N_EXPERIMENTS_PER_CONFIG:
         print(f"WARNING: Experiment {_experiment} has more results than expected: {n_results}>{N_EXPERIMENTS_PER_CONFIG}")
@@ -64,6 +65,9 @@ for _experiment in experiments:
     if n_results == N_EXPERIMENTS_PER_CONFIG:
         print(f"Experiment {_experiment} has already been completed, continuing...")
         continue
+
+    if n_results > 0:
+        print(f"{n_results} experiments have already been run, continuing the remaining experiments.")
 
     to_perform_experiments = N_EXPERIMENTS_PER_CONFIG - n_results
 
@@ -83,13 +87,21 @@ for _experiment in experiments:
     _output_size = len(_train_dataset.classes)
 
     for i in range(to_perform_experiments):
+        # Set logging
+        _log_level = model_config.log_level
+        _log_file_location = f"experiments/static/{experiment_dataset}/{_experiment}/result{n_results + i + 1}.log"
+        _log_file = open(_log_file_location, 'w')
+        _l = lambda level, message, end="\n": print(message, end="\n", file=_log_file) if level >= _log_level else None
+
         snn = SparseNeuralNetwork(input_size=_input_size,
                                   output_size=_output_size,
-                                  model_config=model_config)
+                                  model_config=model_config,
+                                  l=_l)
 
         trainer = SparseTrainer(_train_dataset, _test_dataset, _trainloader, _testloader,
                                 model=snn,
-                                trainer_config=trainer_config)
+                                trainer_config=trainer_config,
+                                l=_l)
 
         trainer.train()
 
@@ -98,5 +110,9 @@ for _experiment in experiments:
             "trainer": trainer
         }
 
-        with open(f"experiments/static/{experiment_dataset}/{_experiment}/result{n_results + i + 1}", "wb") as result_file:
-            pickle.dump(_pkl_result, result_file)
+        with open(f"experiments/static/{experiment_dataset}/{_experiment}/result{n_results + i + 1}.result", "wb") as result_file:
+            trainer.train_dataset, trainer.test_dataset = None, None
+            trainer.trainloader, trainer.testloader = None, None
+            trainer.model = None
+            print(f"Dumping results for {_experiment} {n_results + i + 1}")
+            dill.dump(_pkl_result, result_file)

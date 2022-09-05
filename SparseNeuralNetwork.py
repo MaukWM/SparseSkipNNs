@@ -14,6 +14,8 @@ from LayerType import LayerType
 from LogLevel import LogLevel
 from item_keys import ItemKey
 
+MAX_REGROW_ITER_RATIO = 4
+
 
 class SparseNeuralNetwork(nn.Module):
 
@@ -22,7 +24,7 @@ class SparseNeuralNetwork(nn.Module):
     skip_sequential_ratio=0.8 means 80% of the connections are aimed to be sequential
     prune_rate is the % of active connections we want to prune per evolutionary step
     """
-    def __init__(self, input_size, output_size, model_config: ModelConfig):
+    def __init__(self, input_size, output_size, model_config: ModelConfig, l):
         super(SparseNeuralNetwork, self).__init__()
         self.model_config = model_config
 
@@ -36,8 +38,7 @@ class SparseNeuralNetwork(nn.Module):
         self.skip_sequential_ratio = model_config.skip_sequential_ratio
 
         # Set logging
-        self.log_level = model_config.log_level
-        self.l = lambda level, message: print(message) if level >= self.log_level else None
+        self.l = l
 
         # Set evolution parameters
         self.pruning_type = model_config.pruning_type
@@ -473,7 +474,7 @@ class SparseNeuralNetwork(nn.Module):
         else:
             self.regrow_on_layer_name_list(n_new_connections, self.sequential_layer_names)
 
-    def regrow_by_ratio(self, n_to_regrow, sequential_layer_names, skip_layer_names, max_iter_ratio=2,
+    def regrow_by_ratio(self, n_to_regrow, sequential_layer_names, skip_layer_names, max_iter_ratio=MAX_REGROW_ITER_RATIO,
                         max_iter_connection_growth=20):
         """
         Regrow connections by a given ratio.
