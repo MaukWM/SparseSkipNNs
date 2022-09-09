@@ -4,6 +4,7 @@ import os
 
 import numpy as np
 
+import StaticExperimentAnalyzer
 from Config import TrainerConfig, ModelConfig
 from DataLoaderInitializer import DataLoaderInitializer
 from LogLevel import LogLevel
@@ -51,68 +52,90 @@ def get_configs_from_file(file_path):
         return trainer_config, model_config
 
 
-# First map out what experiments still need to be run
+if __name__ == "__main__":
+    # First map out what experiments still need to be run
 
-experiments = os.listdir("experiments/static/CIFAR10") + os.listdir("experiments/static/CIFAR100")
+    experiments = os.listdir("experiments/static/CIFAR10") # + os.listdir("experiments/static/CIFAR100")
 
-for _experiment in experiments:
-    experiment_dataset = _experiment.split("_")[0].split("-")[1]
-    results = [result for result in os.listdir(f"experiments/static/{experiment_dataset}/{_experiment}") if ".result" in result]
-    n_results = len(results)
-    if n_results > N_EXPERIMENTS_PER_CONFIG:
-        print(f"WARNING: Experiment {_experiment} has more results than expected: {n_results}>{N_EXPERIMENTS_PER_CONFIG}")
-        continue
-    if n_results == N_EXPERIMENTS_PER_CONFIG:
-        print(f"Experiment {_experiment} has already been completed, continuing...")
-        continue
+    n_total_experiments_to_be_run = len(experiments) * N_EXPERIMENTS_PER_CONFIG
+    n_total_done = 0
+    trainer_times = []
 
-    if n_results > 0:
-        print(f"{n_results} experiments have already been run, continuing the remaining experiments.")
+    for _experiment in experiments:
+        experiment_dataset = _experiment.split("_")[0].split("-")[1]
+        results = [result for result in os.listdir(f"experiments/static/{experiment_dataset}/{_experiment}") if ".result" in result]
+        n_total_done += len(results)
+        for result in results:
+            _, _trainer = StaticExperimentAnalyzer.load_experiment(f"experiments/static/{experiment_dataset}/{_experiment}/{result}")
+            trainer_times.append(_trainer.total_train_time)
 
-    to_perform_experiments = N_EXPERIMENTS_PER_CONFIG - n_results
+    average_training_time = int(np.mean(trainer_times))
 
-    trainer_config, model_config = get_configs_from_file(f"experiments/static/{experiment_dataset}/{_experiment}/config.pkl")
+    print(f"Launching experiment framework, {n_total_done}/{n_total_experiments_to_be_run} experiment performed, {n_total_experiments_to_be_run - n_total_done} remaining.")
+    print(f"Average time per experiment: {average_training_time}s . Estimated time for remaining experiments: {average_training_time * (n_total_experiments_to_be_run - n_total_done)}")
 
-    if trainer_config.dataset not in loaded_datasets.keys():
-        data_loader_initializer = DataLoaderInitializer(trainer_config.dataset, trainer_config.batch_size)
+    for _experiment in experiments:
+        experiment_dataset = _experiment.split("_")[0].split("-")[1]
+        results = [result for result in os.listdir(f"experiments/static/{experiment_dataset}/{_experiment}") if ".result" in result]
+        n_results = len(results)
+        if n_results > N_EXPERIMENTS_PER_CONFIG:
+            print(f"WARNING: Experiment {_experiment} has more results than expected: {n_results}>{N_EXPERIMENTS_PER_CONFIG}")
+            continue
+        if n_results == N_EXPERIMENTS_PER_CONFIG:
+            _sub_result_trainer_times = []
+            for result in results:
+                _, _trainer = StaticExperimentAnalyzer.load_experiment(f"experiments/static/{experiment_dataset}/{_experiment}/{result}")
+                _sub_result_trainer_times.append(_trainer.total_train_time)
+            print(f"Experiment {_experiment} has already been completed and took ~{int(np.mean(_sub_result_trainer_times))}s, continuing...")
+            continue
 
-        # Load datasets
-        loaded_datasets[trainer_config.dataset] = {}
-        loaded_datasets[trainer_config.dataset]["train_dataset"], loaded_datasets[trainer_config.dataset]["test_dataset"], loaded_datasets[trainer_config.dataset]["trainloader"], loaded_datasets[trainer_config.dataset]["testloader"] = data_loader_initializer.get_datasets_and_dataloaders()
+        if n_results > 0:
+            print(f"{n_results} experiments have already been run, continuing the remaining experiments.")
 
-    _train_dataset, _test_dataset, _trainloader, _testloader = loaded_datasets[trainer_config.dataset]["train_dataset"], loaded_datasets[trainer_config.dataset]["test_dataset"], loaded_datasets[trainer_config.dataset]["trainloader"], loaded_datasets[trainer_config.dataset]["testloader"]
+        to_perform_experiments = N_EXPERIMENTS_PER_CONFIG - n_results
 
-    # Find input and output sizes from dataset
-    _input_size = np.prod(_train_dataset.data.shape[1:])
-    _output_size = len(_train_dataset.classes)
+        trainer_config, model_config = get_configs_from_file(f"experiments/static/{experiment_dataset}/{_experiment}/config.pkl")
 
-    for i in range(to_perform_experiments):
-        # Set logging
-        _log_level = model_config.log_level
-        _log_file_location = f"experiments/static/{experiment_dataset}/{_experiment}/result{n_results + i + 1}.log"
-        _log_file = open(_log_file_location, 'w')
-        _l = lambda level, message, end="\n": print(message, end="\n", file=_log_file) if level >= _log_level else None
+        if trainer_config.dataset not in loaded_datasets.keys():
+            data_loader_initializer = DataLoaderInitializer(trainer_config.dataset, trainer_config.batch_size)
 
-        snn = SparseNeuralNetwork(input_size=_input_size,
-                                  output_size=_output_size,
-                                  model_config=model_config,
-                                  l=_l)
+            # Load datasets
+            loaded_datasets[trainer_config.dataset] = {}
+            loaded_datasets[trainer_config.dataset]["train_dataset"], loaded_datasets[trainer_config.dataset]["test_dataset"], loaded_datasets[trainer_config.dataset]["trainloader"], loaded_datasets[trainer_config.dataset]["testloader"] = data_loader_initializer.get_datasets_and_dataloaders()
 
-        trainer = SparseTrainer(_train_dataset, _test_dataset, _trainloader, _testloader,
-                                model=snn,
-                                trainer_config=trainer_config,
-                                l=_l)
+        _train_dataset, _test_dataset, _trainloader, _testloader = loaded_datasets[trainer_config.dataset]["train_dataset"], loaded_datasets[trainer_config.dataset]["test_dataset"], loaded_datasets[trainer_config.dataset]["trainloader"], loaded_datasets[trainer_config.dataset]["testloader"]
 
-        trainer.train()
+        # Find input and output sizes from dataset
+        _input_size = np.prod(_train_dataset.data.shape[1:])
+        _output_size = len(_train_dataset.classes)
+        for i in range(to_perform_experiments):
+            # Set logging
+            _log_level = model_config.log_level
+            _log_file_location = f"experiments/static/{experiment_dataset}/{_experiment}/result{n_results + i + 1}.log"
+            _log_file = open(_log_file_location, 'w')
+            _l = lambda level, message, end="\n": print(message, end="\n", file=_log_file) if level >= _log_level else None
 
-        _pkl_result = {
-            "snn": snn,
-            "trainer": trainer
-        }
+            snn = SparseNeuralNetwork(input_size=_input_size,
+                                      output_size=_output_size,
+                                      model_config=model_config,
+                                      l=_l)
 
-        with open(f"experiments/static/{experiment_dataset}/{_experiment}/result{n_results + i + 1}.result", "wb") as result_file:
-            trainer.train_dataset, trainer.test_dataset = None, None
-            trainer.trainloader, trainer.testloader = None, None
-            trainer.model = None
-            print(f"Dumping results for {_experiment} {n_results + i + 1}")
-            dill.dump(_pkl_result, result_file)
+            trainer = SparseTrainer(_train_dataset, _test_dataset, _trainloader, _testloader,
+                                    model=snn,
+                                    trainer_config=trainer_config,
+                                    l=_l)
+
+            trainer.train()
+
+            _pkl_result = {
+                "snn": snn,
+                "trainer": trainer
+            }
+
+            with open(f"experiments/static/{experiment_dataset}/{_experiment}/result{n_results + i + 1}.result", "wb") as result_file:
+                trainer.train_dataset, trainer.test_dataset = None, None
+                trainer.trainloader, trainer.testloader = None, None
+                trainer.model = None
+                print(f"Dumping results for {_experiment} {n_results + i + 1}")
+                dill.dump(_pkl_result, result_file)
+8

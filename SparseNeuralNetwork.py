@@ -556,7 +556,7 @@ class SparseNeuralNetwork(nn.Module):
         self.l(message=f"[EvolveNetwork - RegrowNetwork] Sequential regrown: {sequential_activated}, Skip regrown: {skip_activated}", level=LogLevel.SIMPLE)
         self.l(message=f"[EvolveNetwork - RegrowNetwork] N K's regrown: {n_k_activated}", level=LogLevel.VERBOSE)
 
-    def regrow_on_layer_name_list(self, n_to_regrow, layer_name_list, max_iter_ratio=4):
+    def regrow_on_layer_name_list(self, n_to_regrow, layer_name_list, max_iter_ratio=MAX_REGROW_ITER_RATIO):
         """
         Given a list of layer names, regrow connections in these layers.
         :param n_to_regrow: Amount of connections to regrow

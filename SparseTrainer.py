@@ -64,6 +64,9 @@ class SparseTrainer:
         self.validation_accuracy_at_peak = 0
         self.inference_flops_at_peak = 0
 
+        # Total training time
+        self.total_train_time = None
+
     def train(self):
         _train_start = time.time()
 
@@ -193,6 +196,7 @@ class SparseTrainer:
             self.items[item_key].append(sparsity_information[item_key])
 
         _train_end = time.time()
+        self.total_train_time = _train_end - _train_start
 
         self.l(message=f"Total training time: {_train_end - _train_start:.2f}s", level=LogLevel.SIMPLE)
         self.l(message=f"Final performance at epoch {self.peak_epoch}: Val_acc={self.validation_accuracy_at_peak:.2f}%, Train_flops={self.training_flops:.2e},"

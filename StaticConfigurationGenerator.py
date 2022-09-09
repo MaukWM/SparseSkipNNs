@@ -27,7 +27,7 @@ base_configuration = {
         "cutoff": 0.001,
         "prune_rate": 0.1,
         # Options: fixed_sparsity, percentage, no_regrowth
-        "regrowth_type": "percentage",
+        "regrowth_type": "fixed_sparsity",
         "regrowth_ratio": 0.5,
         "regrowth_percentage": 0.10,
     }
