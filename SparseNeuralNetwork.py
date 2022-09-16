@@ -486,7 +486,7 @@ class SparseNeuralNetwork(nn.Module):
 
         self.regrow_ratio: Regrowth ratio. 0.8 means 80% of regrowth will take place in sequential layers.
         """
-        max_iter = n_to_regrow * max_iter_ratio
+        max_iter = int(n_to_regrow * max_iter_ratio)
         n_weights_activated = 0
         n_k_activated = dict()
         total_iter = 0
@@ -563,7 +563,7 @@ class SparseNeuralNetwork(nn.Module):
         :param layer_name_list: List of the layers in which we regrow
         :param max_iter_ratio: Max iteration attempts per layer before moving on (higher values can mean larger computation times in denser networks)
         """
-        max_iter = n_to_regrow * max_iter_ratio
+        max_iter = int(n_to_regrow * max_iter_ratio)
         n_weights_activated = 0
         n_k_activated = dict()
 

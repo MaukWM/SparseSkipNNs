@@ -37,8 +37,12 @@ class SparseTrainer:
         # Set logging
         self.l = l
 
+        # Set gpu use
+        self.use_gpu = False
+
         # # Move to gpu
-        # self.trainloader.cuda(), self.testloader.cuda()
+        if self.use_gpu:
+            self.trainloader.cuda(), self.testloader.cuda()
 
         # Set model and initialize model evolution parameters
         self.model = model
