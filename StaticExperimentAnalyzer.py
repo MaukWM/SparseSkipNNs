@@ -21,12 +21,12 @@ def load_experiment(experiment_path) -> Tuple[SparseNeuralNetwork, SparseTrainer
 def load_trainers(dataset: str):
     result = {}
 
-    for experiment_config_dir in tqdm(os.listdir(f"experiments_backup_10_10_2022/static/{dataset}")):
-        _experiments = [x for x in os.listdir(os.path.join(f"experiments_backup_10_10_2022/static/{dataset}", experiment_config_dir)) if ".result" in x]
+    for experiment_config_dir in tqdm(os.listdir(f"experiments/static/{dataset}")):
+        _experiments = [x for x in os.listdir(os.path.join(f"experiments/static/{dataset}", experiment_config_dir)) if ".result" in x]
         result[experiment_config_dir] = []
         for _experiment in _experiments:
             _snn, _trainer = load_experiment(
-                f"experiments_backup_10_10_2022/static/{dataset}/{experiment_config_dir}/{_experiment}")
+                f"experiments/static/{dataset}/{experiment_config_dir}/{_experiment}")
             result[experiment_config_dir].append(_trainer)
 
     return result
