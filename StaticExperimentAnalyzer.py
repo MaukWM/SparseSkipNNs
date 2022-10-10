@@ -1,3 +1,4 @@
+import math
 from typing import Tuple
 
 import dill
@@ -41,12 +42,28 @@ def average_ld(ld):
     return average_collected_trainer_items
 
 
+# Given a list of dictionaries, make one dictionary that gets the standard deviation of each key (recursively as well for embedded dicts)
+def std_ld(ld):
+    std = util.ld_to_dl(ld)
+    for collected_trainer_item_name in std.keys():
+        if type(std[collected_trainer_item_name][0]) is dict:
+            std[collected_trainer_item_name] = std_ld(std[collected_trainer_item_name])
+        else:
+            std[collected_trainer_item_name] = np.std(std[collected_trainer_item_name])
+    return std
+
+
 # Given a list of trainers with multiple experiments ran, compile the results
 def compile_trainer_results(trainers):
-    result = {}
+    mean_result = {}
+    std_result = {}
+    all_result = {}
+
+    extra_items = ["inference_flops_at_peak", "training_flops_at_peak"]
 
     for trainer_name in trainers.keys():
-        result[trainer_name] = {}
+        mean_result[trainer_name] = {}
+        std_result[trainer_name] = {}
 
         collected_trainer_items = []
 
@@ -56,32 +73,45 @@ def compile_trainer_results(trainers):
 
         for trainer in trainers[trainer_name]:
             trainer_items = trainer.items
+            for extra_item in extra_items:
+                trainer_items[extra_item] = math.nan
+
             trainer_peak_epoch = trainer.peak_epoch
 
             # for all trainer.items grab the element of trainer.peak_epoch
             for trainer_item_name in trainer_items.keys():
-                trainer_items[trainer_item_name] = trainer_items[trainer_item_name][trainer_peak_epoch]
+                if trainer_item_name not in extra_items:
+                    trainer_items[trainer_item_name] = trainer_items[trainer_item_name][trainer_peak_epoch]
+
+            # Add big floppa
+            trainer_items["inference_flops_at_peak"] = trainer.inference_flops_at_peak
+            trainer_items["training_flops_at_peak"] = trainer.training_flops_at_peak
 
             collected_trainer_items.append(trainer_items)
 
         average_collected_trainer_items = average_ld(collected_trainer_items)
+        std_collected_trainer_items = std_ld(collected_trainer_items)
 
-        result[trainer_name] = average_collected_trainer_items
+        mean_result[trainer_name] = average_collected_trainer_items
+        std_result[trainer_name] = std_collected_trainer_items
+        all_result[trainer_name] = collected_trainer_items
 
-    return result
+    return mean_result, std_result, all_result
 
 
 class StaticExperimentAnalyzer:
 
-    def __init__(self, compiled_trainers):
-        self.compiled_trainers = compiled_trainers
+    def __init__(self, mean_compiled_trainers, std_compiled_trainers, all_trainers):
+        self.mean_compiled_trainers = mean_compiled_trainers
+        self.std_compiled_trainers = std_compiled_trainers
+        self.all_trainers = all_trainers
 
         # Create grouping lists
         # First we create lists on different max_connection_depths
         self.mcd_grouping = {}
         self.ratio_grouping = {}
         self.sparsity_grouping = {}
-        for compiled_trainer_name in compiled_trainers.keys():
+        for compiled_trainer_name in mean_compiled_trainers.keys():
             _depth = compiled_trainer_name.split("_")[1].split("-")[1]
             _sparsity = compiled_trainer_name.split("_")[2].split("-")[1]
             _ratio = compiled_trainer_name.split("_")[3].split("-")[1]
@@ -112,8 +142,8 @@ class StaticExperimentAnalyzer:
                     results[grouping_name][_grouping_key] = []
                 _experiments = _grouping[_grouping_key]
                 for _experiment in _experiments:
-                    if k in self.compiled_trainers[_experiment].keys():
-                        results[grouping_name][_grouping_key] = max(self.compiled_trainers[_experiment][k], results[grouping_name][_grouping_key])
+                    if k in self.mean_compiled_trainers[_experiment].keys():
+                        results[grouping_name][_grouping_key] = max(self.mean_compiled_trainers[_experiment][k], results[grouping_name][_grouping_key])
 
         print(results)
 
@@ -123,28 +153,52 @@ class StaticExperimentAnalyzer:
     def plot_grouping(self, grouping_name, k="validation_accuracy"):
         to_plot_categories = list(self.groupings.keys())
         # print(to_plot_categories)
-        compiled_mcd_ratio_groupings = {}
-        compiled_mcd_sparsity_groupings = {}
+        mean_compiled_mcd_ratio_groupings = {}
+        mean_compiled_mcd_sparsity_groupings = {}
+        all_compiled_mcd_ratio_groupings = {}
+        all_compiled_mcd_sparsity_groupings = {}
 
         # Collect information according to group (currently separate grouping per max connection depth, x axis ratio by sparsity)
         for _grouping_key in self.groupings[grouping_name]:
             _sub_groupings = list(self.sparsity_grouping.keys())
-            _sub_grouping_dict = {}
+            _mean_sub_grouping_dict = {}
+            _all_sub_grouping_dict = {}
             for _sub_grouping in _sub_groupings:
-                _sub_grouping_dict[_sub_grouping] = []
+                _mean_sub_grouping_dict[_sub_grouping] = []
+                _all_sub_grouping_dict[_sub_grouping] = []
             for _experiment in self.groupings[grouping_name][_grouping_key]:
                 # Group by sparsity by hand
                 _sparsity = _experiment.split("_")[2].split("-")[1]
                 _ratio = _experiment.split("_")[3].split("-")[1]
 
-                if k in self.compiled_trainers[_experiment].keys():
-                    _sub_grouping_dict[_sparsity].append((_ratio, self.compiled_trainers[_experiment][k]))
+                if k in self.mean_compiled_trainers[_experiment].keys():
+                    _mean_sub_grouping_dict[_sparsity].append((_ratio, self.mean_compiled_trainers[_experiment][k]))
+                    _all_sub_grouping_dict[_sparsity].append((_ratio, [x[k] for x in self.all_trainers[_experiment]]))
+            mean_compiled_mcd_ratio_groupings[_grouping_key] = _mean_sub_grouping_dict
+            all_compiled_mcd_ratio_groupings[_grouping_key] = _all_sub_grouping_dict
 
-            compiled_mcd_ratio_groupings[_grouping_key] = _sub_grouping_dict
+        # print(mean_compiled_mcd_ratio_groupings)
 
-            # print("subgroupdict", _sub_grouping_dict)
+        generalized_compiled_mcd_ratio_groupings_mean = {}
+        generalized_compiled_mcd_ratio_groupings_max = {}
+        generalized_compiled_mcd_ratio_groupings_std = {}
 
-        print(compiled_mcd_ratio_groupings)
+        # Compile mcd_ratio_grouping even further
+        for _grouping_key in mean_compiled_mcd_ratio_groupings.keys():
+            generalized_compiled_mcd_ratio_groupings_mean[_grouping_key] = {}
+            generalized_compiled_mcd_ratio_groupings_max[_grouping_key] = {}
+            generalized_compiled_mcd_ratio_groupings_std[_grouping_key] = {}
+            for _sub_grouping_key in mean_compiled_mcd_ratio_groupings[_grouping_key].keys():
+                _mean_sub_grouping = mean_compiled_mcd_ratio_groupings[_grouping_key][_sub_grouping_key]
+                _all_sub_grouping = all_compiled_mcd_ratio_groupings[_grouping_key][_sub_grouping_key]
+                if len(_mean_sub_grouping) > 0:
+                    generalized_compiled_mcd_ratio_groupings_mean[_grouping_key][_sub_grouping_key] = np.mean([x[1] for x in _mean_sub_grouping])
+                if len(_all_sub_grouping) > 0:
+                    generalized_compiled_mcd_ratio_groupings_std[_grouping_key][_sub_grouping_key] = np.std([x[1] for x in _all_sub_grouping])
+                    generalized_compiled_mcd_ratio_groupings_max[_grouping_key][_sub_grouping_key] = np.max([x[1] for x in _all_sub_grouping])
+
+        # print(generalized_compiled_mcd_ratio_groupings_mean)
+        # print(generalized_compiled_mcd_ratio_groupings_std)
 
         # Collect information according to group (currently separate grouping per max connection depth, x axis ratio by sparsity)
         for _grouping_key in self.groupings[grouping_name]:
@@ -157,14 +211,14 @@ class StaticExperimentAnalyzer:
                 _sparsity = _experiment.split("_")[2].split("-")[1]
                 _ratio = _experiment.split("_")[3].split("-")[1]
 
-                if k in self.compiled_trainers[_experiment].keys():
-                    _sub_grouping_dict[_ratio].append((_sparsity, self.compiled_trainers[_experiment][k]))
+                if k in self.mean_compiled_trainers[_experiment].keys():
+                    _sub_grouping_dict[_ratio].append((_sparsity, self.mean_compiled_trainers[_experiment][k]))
 
-            compiled_mcd_sparsity_groupings[_grouping_key] = _sub_grouping_dict
+            mean_compiled_mcd_sparsity_groupings[_grouping_key] = _sub_grouping_dict
 
             # print("subgroupdict", _sub_grouping_dict)
 
-        print(compiled_mcd_sparsity_groupings)
+        # print(compiled_mcd_sparsity_groupings)
 
         # # Plot the sub groupings in separate graphs
         # for _compiled_mcd_grouping_key in compiled_mcd_groupings.keys():
@@ -180,19 +234,20 @@ class StaticExperimentAnalyzer:
         #         plt.show()
         #         plt.grid()
 
+        # Plot detailed graphs
         sparsity_colors = {}
         for sparsity_key in self.sparsity_grouping.keys():
             sparsity_colors[sparsity_key] = (float(sparsity_key) * 0.5, 0, (float(sparsity_key) - 0.6) * 2)
 
         # Plot the sub groupings in a single graphs
-        for _compiled_mcd_grouping_key in compiled_mcd_ratio_groupings.keys():
-            _sub_grouping = compiled_mcd_ratio_groupings[_compiled_mcd_grouping_key]
+        for _compiled_mcd_grouping_key in mean_compiled_mcd_ratio_groupings.keys():
+            _sub_grouping = mean_compiled_mcd_ratio_groupings[_compiled_mcd_grouping_key]
             for _sparsity_key in _sub_grouping.keys():
                 _results = _sub_grouping[_sparsity_key]
                 if len(_results) > 0:
                     xs = [float(x[0]) for x in _results]
                     ys = [float(x[1]) for x in _results]
-                    plt.plot(xs, ys, label=f"{_sparsity_key}", color=sparsity_colors[_sparsity_key])
+                    plt.plot(xs, ys, label=f"{_sparsity_key}")  #, color=sparsity_colors[_sparsity_key])
             plt.xlabel("ratio")
             plt.ylabel(k)
             plt.title(f"Connection depth {_compiled_mcd_grouping_key}")
@@ -200,20 +255,45 @@ class StaticExperimentAnalyzer:
             plt.grid()
             plt.show()
 
+        print(generalized_compiled_mcd_ratio_groupings_mean)
+        print(generalized_compiled_mcd_ratio_groupings_std)
+
+        # Nice printing
+        for _generalized_compiled_mcd_grouping_key in generalized_compiled_mcd_ratio_groupings_mean.keys():
+            print("Connection depth: " + _generalized_compiled_mcd_grouping_key)
+            _sub_grouping = generalized_compiled_mcd_ratio_groupings_mean[_generalized_compiled_mcd_grouping_key]
+            _sub_grouping_keys = generalized_compiled_mcd_ratio_groupings_mean[_generalized_compiled_mcd_grouping_key].keys()
+            for _sub_grouping_key in _sub_grouping_keys:
+                print(f"{_sub_grouping_key}: {_sub_grouping[_sub_grouping_key]:.2e} ± {generalized_compiled_mcd_ratio_groupings_std[_generalized_compiled_mcd_grouping_key][_sub_grouping_key]:.2e}")
+
+        # Plot the sub groupings in a single graphs
+        for _generalized_compiled_mcd_grouping_key in generalized_compiled_mcd_ratio_groupings_mean.keys():
+            _sub_grouping = generalized_compiled_mcd_ratio_groupings_mean[_generalized_compiled_mcd_grouping_key]
+            _results = sorted([(_key, _sub_grouping[_key]) for _key in _sub_grouping], key=lambda x: x[0])
+            xs = [float(x[0]) for x in _results]
+            ys = [float(x[1]) for x in _results]
+            plt.plot(xs, ys, label=f"{_generalized_compiled_mcd_grouping_key}")
+        plt.xlabel("sparsity")
+        plt.ylabel(k)
+        plt.title(f"Average model performance by connection depth and sparsity")
+        plt.legend()
+        plt.grid()
+        plt.show()
+
         ratio_colors = {}
         for ratio_key in self.ratio_grouping.keys():
             ratio_colors[ratio_key] = (0.5 + 0.1 * float(ratio_key), 0.5 * float(ratio_key), float(ratio_key))
 
         # Plot the sub groupings in a single graphs
-        for _compiled_mcd_grouping_key in compiled_mcd_sparsity_groupings.keys():
-            _sub_grouping = compiled_mcd_sparsity_groupings[_compiled_mcd_grouping_key]
+        for _compiled_mcd_grouping_key in mean_compiled_mcd_sparsity_groupings.keys():
+            _sub_grouping = mean_compiled_mcd_sparsity_groupings[_compiled_mcd_grouping_key]
             for _ratio_key in _sub_grouping.keys():
                 _results = _sub_grouping[_ratio_key]
                 _results = sorted(_results, key=lambda x: x[0])
                 if len(_results) > 0:
                     xs = [float(x[0]) for x in _results]
                     ys = [float(x[1]) for x in _results]
-                    plt.plot(xs, ys, label=f"{_ratio_key}", color=ratio_colors[_ratio_key])
+                    plt.plot(xs, ys, label=f"{_ratio_key}") #, color=ratio_colors[_ratio_key])
             plt.xlabel("sparsity")
             plt.ylabel(k)
             plt.title(f"Connection depth {_compiled_mcd_grouping_key}")
@@ -227,12 +307,14 @@ if __name__ == "__main__":
 
     trainers = load_trainers("CIFAR10")
 
-    compiled_trainers = compile_trainer_results(trainers)
+    mean_compiled_trainers, std_compiled_trainers, all_trainers = compile_trainer_results(trainers)
 
-    sea = StaticExperimentAnalyzer(compiled_trainers)
+    print(f"keys: {mean_compiled_trainers[list(mean_compiled_trainers.keys())[0]].keys()}")
+
+    sea = StaticExperimentAnalyzer(mean_compiled_trainers, std_compiled_trainers, all_trainers)
 
     # sea.get_maxes_by_grouping()
-    sea.plot_grouping("mcd")
+    sea.plot_grouping("mcd", k="actualized_sparsity_ratio")
 
     # print(trainer.items)
     # visualizer = Visualizer.Visualizer(trainer)

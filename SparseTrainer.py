@@ -212,9 +212,9 @@ if __name__ == "__main__":
 
     trainer_config = TrainerConfig(
         batch_size=512,
-        dataset=DatasetEnum.CIFAR10,
+        dataset="CIFAR10",
         epochs=100,
-        evolution_interval=1,
+        evolution_interval=None,
         lr=5e-3,
         early_stopping_threshold=4,
         # Options: l1, l2
@@ -224,22 +224,22 @@ if __name__ == "__main__":
 
     model_config = ModelConfig(
         n_hidden_layers=4,
-        max_connection_depth=3,
+        max_connection_depth=1,
         network_width=100,
         sparsity=0,
-        skip_sequential_ratio=0.5,
+        skip_sequential_ratio=1,
         log_level=_log_level,
         # Options: bottom_k, cutoff
         pruning_type="cutoff",
         cutoff=0.001,
         prune_rate=0.1,
         # Options: fixed_sparsity, percentage, no_regrowth
-        regrowth_type="percentage",
+        regrowth_type="fixed_sparsity",
         regrowth_ratio=0.5,
         regrowth_percentage=0.10,
     )
 
-    l = lambda level, message: print(message) if level >= _log_level else None
+    l = lambda level, message, end="\n": print(message, end=end) if level >= _log_level else None
 
     data_loader_initializer = DataLoaderInitializer(trainer_config.dataset, trainer_config.batch_size)
 

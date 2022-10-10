@@ -23,7 +23,7 @@ class ModelConfig:
 @dataclass
 class TrainerConfig:
     batch_size: int
-    dataset: DatasetEnum
+    dataset: str
     epochs: int
     evolution_interval: int
     lr: float
