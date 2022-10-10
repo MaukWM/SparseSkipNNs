@@ -59,6 +59,7 @@ if __name__ == "__main__":
 
     n_total_experiments_to_be_run = len(experiments) * N_EXPERIMENTS_PER_CONFIG
     n_total_done = 0
+    average_training_time = 0
     trainer_times = []
 
     for _experiment in experiments:
@@ -71,7 +72,8 @@ if __name__ == "__main__":
                 f"experiments/static/{experiment_dataset}/{_experiment}/{result}")
             trainer_times.append(_trainer.total_train_time)
 
-    average_training_time = int(np.mean(trainer_times))
+    if len(trainer_times) > 0:
+        average_training_time = int(np.mean(trainer_times))
 
     print(f"Launching experiment framework, {n_total_done}/{n_total_experiments_to_be_run} experiment performed, {n_total_experiments_to_be_run - n_total_done} remaining.")
     print(f"Average time per experiment: {average_training_time}s . Estimated time for remaining experiments: {average_training_time * (n_total_experiments_to_be_run - n_total_done)}")
