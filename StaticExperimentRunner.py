@@ -55,7 +55,7 @@ def get_configs_from_file(file_path):
 if __name__ == "__main__":
     # First map out what experiments still need to be run
 
-    experiments = os.listdir("experiments/static/CIFAR10") # + os.listdir("experiments/static/CIFAR100")
+    experiments = os.listdir("experiments_backup_10_10_2022/static/CIFAR10") # + os.listdir("experiments/static/CIFAR100")
 
     n_total_experiments_to_be_run = len(experiments) * N_EXPERIMENTS_PER_CONFIG
     n_total_done = 0
@@ -63,10 +63,12 @@ if __name__ == "__main__":
 
     for _experiment in experiments:
         experiment_dataset = _experiment.split("_")[0].split("-")[1]
-        results = [result for result in os.listdir(f"experiments/static/{experiment_dataset}/{_experiment}") if ".result" in result]
+        results = [result for result in os.listdir(
+            f"experiments_backup_10_10_2022/static/{experiment_dataset}/{_experiment}") if ".result" in result]
         n_total_done += len(results)
         for result in results:
-            _, _trainer = StaticExperimentAnalyzer.load_experiment(f"experiments/static/{experiment_dataset}/{_experiment}/{result}")
+            _, _trainer = StaticExperimentAnalyzer.load_experiment(
+                f"experiments_backup_10_10_2022/static/{experiment_dataset}/{_experiment}/{result}")
             trainer_times.append(_trainer.total_train_time)
 
     average_training_time = int(np.mean(trainer_times))
@@ -76,7 +78,8 @@ if __name__ == "__main__":
 
     for _experiment in experiments:
         experiment_dataset = _experiment.split("_")[0].split("-")[1]
-        results = [result for result in os.listdir(f"experiments/static/{experiment_dataset}/{_experiment}") if ".result" in result]
+        results = [result for result in os.listdir(
+            f"experiments_backup_10_10_2022/static/{experiment_dataset}/{_experiment}") if ".result" in result]
         n_results = len(results)
         if n_results > N_EXPERIMENTS_PER_CONFIG:
             print(f"WARNING: Experiment {_experiment} has more results than expected: {n_results}>{N_EXPERIMENTS_PER_CONFIG}")
@@ -84,7 +87,8 @@ if __name__ == "__main__":
         if n_results == N_EXPERIMENTS_PER_CONFIG:
             _sub_result_trainer_times = []
             for result in results:
-                _, _trainer = StaticExperimentAnalyzer.load_experiment(f"experiments/static/{experiment_dataset}/{_experiment}/{result}")
+                _, _trainer = StaticExperimentAnalyzer.load_experiment(
+                    f"experiments_backup_10_10_2022/static/{experiment_dataset}/{_experiment}/{result}")
                 _sub_result_trainer_times.append(_trainer.total_train_time)
             print(f"Experiment {_experiment} has already been completed and took ~{int(np.mean(_sub_result_trainer_times))}s, continuing...")
             continue
@@ -94,7 +98,8 @@ if __name__ == "__main__":
 
         to_perform_experiments = N_EXPERIMENTS_PER_CONFIG - n_results
 
-        trainer_config, model_config = get_configs_from_file(f"experiments/static/{experiment_dataset}/{_experiment}/config.pkl")
+        trainer_config, model_config = get_configs_from_file(
+            f"experiments_backup_10_10_2022/static/{experiment_dataset}/{_experiment}/config.pkl")
 
         if trainer_config.dataset not in loaded_datasets.keys():
             data_loader_initializer = DataLoaderInitializer(trainer_config.dataset, trainer_config.batch_size)
@@ -111,7 +116,7 @@ if __name__ == "__main__":
         for i in range(to_perform_experiments):
             # Set logging
             _log_level = model_config.log_level
-            _log_file_location = f"experiments/static/{experiment_dataset}/{_experiment}/result{n_results + i + 1}.log"
+            _log_file_location = f"experiments_backup_10_10_2022/static/{experiment_dataset}/{_experiment}/result{n_results + i + 1}.log"
             _log_file = open(_log_file_location, 'w')
             _l = lambda level, message, end="\n": print(message, end="\n", file=_log_file) if level >= _log_level else None
 
@@ -132,7 +137,8 @@ if __name__ == "__main__":
                 "trainer": trainer
             }
 
-            with open(f"experiments/static/{experiment_dataset}/{_experiment}/result{n_results + i + 1}.result", "wb") as result_file:
+            with open(
+                    f"experiments_backup_10_10_2022/static/{experiment_dataset}/{_experiment}/result{n_results + i + 1}.result", "wb") as result_file:
                 trainer.train_dataset, trainer.test_dataset = None, None
                 trainer.trainloader, trainer.testloader = None, None
                 trainer.model = None

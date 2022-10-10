@@ -1,3 +1,4 @@
+import math
 import time
 
 import torch
@@ -46,7 +47,10 @@ class SparseNeuralNetwork(nn.Module):
         self.cutoff = model_config.cutoff
         # A regrowth type on a ratio implies we keep the sparsity fixed
         self.regrowth_type = model_config.regrowth_type
-        self.regrowth_ratio = model_config.regrowth_ratio
+        if self.regrowth_type == "fixed_sparsity":
+            self.regrowth_ratio = model_config.skip_sequential_ratio
+        else:
+            self.regrowth_ratio = model_config.regrowth_ratio
         self.regrowth_percentage = model_config.regrowth_percentage
 
         # Evolution checks
@@ -369,10 +373,12 @@ class SparseNeuralNetwork(nn.Module):
             message=f"[EvolveNetwork - Pre-pruning] Pre-pruning Overall Sparsity: {1 - self.n_active_connections / self.n_max_sequential_connections:.3f}, Pre-pruning Skip Sparsity: {1 - self.n_active_skip_connections / self.n_max_sequential_connections:.3f}, Pre-pruning Sequential Sparsity: {1 - self.n_active_seq_connections / self.n_max_sequential_connections:.3f}",
             level=LogLevel.SIMPLE)
         self.eval()
-        # --- Prune n smallest weights ---
+
         weight_coordinates = []
 
-        # First get a sorted list of all the weights and their exact coordinates
+        _prune_flops = 0
+
+        # Retrieve a list of all the weights and their exact coordinates
         for name in self.masks.keys():
             current_k = name.split(".")[1]
             current_layer = int(name.split(".")[2])
@@ -392,6 +398,8 @@ class SparseNeuralNetwork(nn.Module):
         if self.pruning_type == "bottom_k":
             _start_sorting = time.time()
             weight_coordinates.sort(key=lambda x: abs(x[5]))
+            # O(n log n) complexity for sorting
+            _prune_flops += len(weight_coordinates) * int(math.log2(len(weight_coordinates)))
             _end_sorting = time.time()
             self.l(
                 message=f"[EvolveNetwork - PruneNetwork - Bottom K] len(weight_coordinates)={len(weight_coordinates)}, time_to_sort={_end_sorting - _start_sorting:.3f}s",
@@ -401,6 +409,8 @@ class SparseNeuralNetwork(nn.Module):
                 level=LogLevel.VERBOSE)
 
             n_to_prune = round(self.n_active_connections * self.prune_rate)
+            # Each prune costs a flop
+            _prune_flops += n_to_prune
 
             # Prune the first n weight from this list
             for i in range(n_to_prune):
@@ -416,6 +426,8 @@ class SparseNeuralNetwork(nn.Module):
                     n_skip_pruned += 1
 
         if self.pruning_type == "cutoff":
+            # Each read costs a flop
+            _prune_flops += len(weight_coordinates)
             for weight_coordinate in weight_coordinates:
                 name, current_k, current_layer, neuron_idx, weight_idx, weight_value = weight_coordinate
                 # Prune by cutoff
@@ -429,13 +441,19 @@ class SparseNeuralNetwork(nn.Module):
                     else:
                         n_skip_pruned += 1
 
+        self.n_sequential_pruned = n_sequential_pruned
+        self.n_skip_pruned = n_skip_pruned
+        self.n_active_connections_pruned = (n_sequential_pruned + n_skip_pruned)
+        # Each prune costs a flop
+        _prune_flops += self.n_active_connections_pruned
+
         # Update n_active connections
         self.n_active_seq_connections -= n_sequential_pruned
         self.n_active_skip_connections -= n_skip_pruned
         self.n_active_connections -= (n_sequential_pruned + n_skip_pruned)
 
         # Reapply mask
-        self.apply_mask()
+        _prune_flops += self.apply_mask()
 
         _end_pruning = time.time()
 
@@ -446,33 +464,130 @@ class SparseNeuralNetwork(nn.Module):
             message=f"[EvolveNetwork - Post-pruning] Post-pruning Overall Sparsity: {1 - self.n_active_connections / self.n_max_sequential_connections:.3f}, Post-pruning Skip Sparsity: {1 - self.n_active_skip_connections / self.n_max_sequential_connections:.3f}, Post-pruning Sequential Sparsity: {1 - self.n_active_seq_connections / self.n_max_sequential_connections:.3f}",
             level=LogLevel.SIMPLE)
 
+        return _prune_flops
+
     def evolve_network(self):
         """
         Evolve the network
         """
+        _evolution_flops = 0
         self.l(message="\n=============== [EvolveNetwork - Start] ===============", level=LogLevel.SIMPLE)
-        self.prune_network()
-        self.regrow_network()
+        _prune_flops = self.prune_network()
+        _regrowth_flops = self.regrow_network()
+        _evolution_flops += _prune_flops + _regrowth_flops
+        print(f"[EvolveNetwork - Floppa] Pruning flops: {_prune_flops} Regrowth flops: {_regrowth_flops}")
         self.l(message="=============== [EvolveNetwork - End] =================", level=LogLevel.SIMPLE)
+
+        return _evolution_flops
 
     def regrow_network(self):
         """
         Regrow connections in the network depending on the method.
         """
+        _regrow_flops = 0
         if self.regrowth_type == "fixed_sparsity":
-            n_new_connections = np.clip(self.n_target_active_connections - self.n_active_connections, 0, None)
+            # n_new_connections = np.clip(self.n_target_active_connections - self.n_active_connections, 0, None)
+            _regrow_flops += self.regrow_exactly(self.sequential_layer_names, self.skip_layer_names)
+            return _regrow_flops
         elif self.regrowth_type == "percentage":
             # TODO: Check if clipping works as expected, we never want sparsity > 1
             n_new_connections = np.clip(round(self.n_active_connections * self.regrowth_percentage), 0, self.n_max_sequential_connections - self.n_active_connections)
         elif self.regrowth_type == "no_regrowth":
-            return
+            return _regrow_flops
         else:
             raise ValueError(f"No valid regrowth type was given: {self.regrowth_type}")
 
         if self.max_connection_depth > 1:
-            self.regrow_by_ratio(n_new_connections, self.sequential_layer_names, self.skip_layer_names)
+            _regrow_flops += self.regrow_by_ratio(n_new_connections, self.sequential_layer_names, self.skip_layer_names)
         else:
-            self.regrow_on_layer_name_list(n_new_connections, self.sequential_layer_names)
+            _regrow_flops += self.regrow_on_layer_name_list(n_new_connections, self.sequential_layer_names)
+
+        return _regrow_flops
+
+    def regrow_exactly(self, sequential_layer_names, skip_layer_names, max_iter_ratio=MAX_REGROW_ITER_RATIO,
+                        max_iter_connection_growth=20):
+        """
+        Regrow connections by a given ratio.
+        :param n_to_regrow: N connections to regrow
+        :param sequential_layer_names: The names of the sequential layers available for regrowth
+        :param skip_layer_names: The names of the skip layers available for regrowth
+        :param max_iter_ratio: max amount of iterations by ratio before stopping regrowth
+        :param max_iter_connection_growth: max amount of iterations when attempting to regrow in a specific layer, high numbers here will lead to very long evolution times on dense networks
+
+        self.regrow_ratio: Regrowth ratio. 0.8 means 80% of regrowth will take place in sequential layers.
+        """
+        _seq_to_regrow = self.n_sequential_pruned
+        _skip_to_regrow = self.n_skip_pruned
+        _n_to_regrow = _seq_to_regrow + _skip_to_regrow
+
+        _regrow_flops = 0
+
+        max_iter = int((_seq_to_regrow + _skip_to_regrow) * max_iter_ratio)
+        n_weights_activated = 0
+        n_k_activated = dict()
+        total_iter = 0
+        _regrow_start = time.time()
+
+        for i in range(max_iter):
+            total_iter += 1
+            # Stop when we've regrown everything we need to regrow or when we reach the max amount of iterations
+            if n_weights_activated >= _n_to_regrow or i == max_iter - 1:
+                _regrow_end = time.time()
+                self.l(
+                    message=f"[EvolveNetwork - RegrowNetwork] Activated {n_weights_activated}/{_n_to_regrow} after {total_iter}/{max_iter * max_iter_connection_growth} iterations. [Time taken:{_regrow_end - _regrow_start:.3f}s]",
+                    level=LogLevel.SIMPLE)
+                # Every iteration is a flop
+                _regrow_flops += total_iter
+                break
+
+            if "1" in n_k_activated.keys():
+                _sequential_activated = n_k_activated["1"]
+            else:
+                _sequential_activated = 0
+            _skip_activated = sum([n_k_activated[_k] for _k in n_k_activated.keys() if int(_k) >= 2])
+
+            # Select layer type to regrow depending on type
+            if _seq_to_regrow > 0:
+                _layer_name_list = sequential_layer_names
+            else:
+                _layer_name_list = skip_layer_names
+
+            _mask_name = np.random.choice(_layer_name_list)
+            _current_k = _mask_name.split(".")[1]
+            _mask = self.masks[_mask_name]
+
+            for j in range(max_iter_connection_growth):
+                total_iter += 1
+                ix, iy = random.randrange(0, _mask.shape[0]), random.randrange(0, _mask.shape[1])
+
+                if _mask[ix][iy]:
+                    continue
+                else:
+                    self.l(message=f"[EvolveNetwork - RegrowNetwork] Regrowing W{ix},{iy} in {_mask_name}",
+                           level=LogLevel.VERBOSE)
+                    self.masks[_mask_name][ix][iy] = True
+                    n_weights_activated += 1
+                    # TODO: Initialize outside of loop so we don't have to check every entry
+                    if _current_k not in n_k_activated.keys():
+                        n_k_activated[_current_k] = 0
+                    n_k_activated[_current_k] += 1
+                    if int(_current_k) == 1:
+                        _seq_to_regrow -= 1
+                    else:
+                        _skip_to_regrow -= 1
+                    break
+
+        if "1" in n_k_activated:
+            sequential_activated = n_k_activated["1"]
+        else:
+            sequential_activated = 0
+
+        skip_activated = sum([n_k_activated[_k] for _k in n_k_activated.keys() if int(_k) >= 2])
+
+        self.l(message=f"[EvolveNetwork - RegrowNetwork] Sequential regrown: {sequential_activated}, Skip regrown: {skip_activated}", level=LogLevel.SIMPLE)
+        self.l(message=f"[EvolveNetwork - RegrowNetwork] N K's regrown: {n_k_activated}", level=LogLevel.VERBOSE)
+
+        return _regrow_flops
 
     def regrow_by_ratio(self, n_to_regrow, sequential_layer_names, skip_layer_names, max_iter_ratio=MAX_REGROW_ITER_RATIO,
                         max_iter_connection_growth=20):
@@ -492,6 +607,14 @@ class SparseNeuralNetwork(nn.Module):
         total_iter = 0
         _regrow_start = time.time()
 
+        _regrow_flops = 0
+
+        # These variables are only used in fixed_sparsity networks
+        _seq_to_regrow = self.n_sequential_pruned
+        _skip_to_regrow = self.n_skip_pruned
+
+        print(n_to_regrow, _seq_to_regrow, _skip_to_regrow)
+
         for i in range(max_iter):
             total_iter += 1
             # Stop when we've regrown everything we need to regrow or when we reach the max amount of iterations
@@ -500,6 +623,8 @@ class SparseNeuralNetwork(nn.Module):
                 self.l(
                     message=f"[EvolveNetwork - RegrowNetwork] Activated {n_weights_activated}/{n_to_regrow} after {total_iter}/{max_iter * max_iter_connection_growth} iterations. [Time taken:{_regrow_end - _regrow_start:.3f}s]",
                     level=LogLevel.SIMPLE)
+                # Every iteration is a flop
+                _regrow_flops += total_iter
                 break
 
             if "1" in n_k_activated.keys():
@@ -510,15 +635,27 @@ class SparseNeuralNetwork(nn.Module):
 
             # Decide whether to regrow a sequential or skip connection depending on ratio and n weight types activated
             if n_weights_activated > 0:
-                if _sequential_activated / n_weights_activated > self.regrowth_ratio:
-                    _layer_name_list = skip_layer_names
-                elif _sequential_activated / n_weights_activated < self.regrowth_ratio:
-                    _layer_name_list = sequential_layer_names
-                else:
-                    if random.random() < self.regrowth_ratio:
+                # Select layer type to regrow depending on type
+                if self.regrowth_type == "fixed_sparsity":
+                    # if (_sequential_activated + self.n_active_seq_connections - self.n_sequential_pruned) / (_skip_activated + _sequential_activated + self.n_active_connections - self.n_active_connections_pruned) < self.regrowth_ratio:
+                    #     _layer_name_list = sequential_layer_names
+                    # else:
+                    #     _layer_name_list = skip_layer_names
+                    if _seq_to_regrow > 0:
                         _layer_name_list = sequential_layer_names
+                        _seq_to_regrow -= 1
                     else:
                         _layer_name_list = skip_layer_names
+                else:
+                    if _sequential_activated / n_weights_activated > self.regrowth_ratio:
+                        _layer_name_list = skip_layer_names
+                    elif _sequential_activated / n_weights_activated < self.regrowth_ratio:
+                        _layer_name_list = sequential_layer_names
+                    else:
+                        if random.random() < self.regrowth_ratio:
+                            _layer_name_list = sequential_layer_names
+                        else:
+                            _layer_name_list = skip_layer_names
             else:
                 if random.random() < self.regrowth_ratio:
                     _layer_name_list = sequential_layer_names
@@ -556,6 +693,8 @@ class SparseNeuralNetwork(nn.Module):
         self.l(message=f"[EvolveNetwork - RegrowNetwork] Sequential regrown: {sequential_activated}, Skip regrown: {skip_activated}", level=LogLevel.SIMPLE)
         self.l(message=f"[EvolveNetwork - RegrowNetwork] N K's regrown: {n_k_activated}", level=LogLevel.VERBOSE)
 
+        return _regrow_flops
+
     def regrow_on_layer_name_list(self, n_to_regrow, layer_name_list, max_iter_ratio=MAX_REGROW_ITER_RATIO):
         """
         Given a list of layer names, regrow connections in these layers.
@@ -567,11 +706,15 @@ class SparseNeuralNetwork(nn.Module):
         n_weights_activated = 0
         n_k_activated = dict()
 
+        _regrow_flops = 0
+
         for i in range(max_iter):
             # Stop when we've regrown everything we need to regrow or when we reach the max amount of iterations
             if n_weights_activated >= n_to_regrow or i == max_iter - 1:
                 self.l(message=f"[EvolveNetwork - RegrowNetwork] Activated {n_weights_activated}/{n_to_regrow} after {i}/{max_iter} iterations.",
                        level=LogLevel.SIMPLE)
+                # Every iteration is a flop
+                _regrow_flops += i
                 break
 
             _mask_name = np.random.choice(layer_name_list)
@@ -592,12 +735,15 @@ class SparseNeuralNetwork(nn.Module):
 
         self.l(message=f"[EvolveNetwork - RegrowNetwork] N K's regrown: {n_k_activated}", level=LogLevel.SIMPLE)
 
+        return _regrow_flops
+
     def apply_mask(self):
         """
         Apply the mask to the network (must be performed after weight update iteration to guarantee sparsity)
         :return:
         """
         # Make sure we don't track the gradient from mask application!!!
+        _mask_application_flops = 0
         _is_training = self.training
         if _is_training:
             self.eval()
@@ -605,9 +751,11 @@ class SparseNeuralNetwork(nn.Module):
             if "bias" in name:
                 continue
             param.data[~self.masks[name]] = 0
+            _mask_application_flops += self.masks[name].numel()
             # print(f"applying{name} {self.masks[name]} to {old_param_data} -> {param.data}")
         if _is_training:
             self.train()
+        return _mask_application_flops
 
     def initialize_mask(self):
         """

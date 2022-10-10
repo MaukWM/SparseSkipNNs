@@ -116,7 +116,7 @@ class SparseTrainer:
                     loss.backward()
                     optimizer.step()
 
-                    self.model.apply_mask()
+                    self.training_flops += self.model.apply_mask()
 
                     # print statistics
                     i += 1
@@ -191,7 +191,7 @@ class SparseTrainer:
                     for item_key in sparsity_information.keys():
                         self.items[item_key].append(sparsity_information[item_key])
 
-                    self.model.evolve_network()
+                    self.training_flops += self.model.evolve_network()
 
         # Track the final sparsity state
         sparsity_information = self.model.get_and_update_sparsity_information()
@@ -214,7 +214,7 @@ if __name__ == "__main__":
         batch_size=512,
         dataset="CIFAR10",
         epochs=100,
-        evolution_interval=None,
+        evolution_interval=1,
         lr=5e-3,
         early_stopping_threshold=4,
         # Options: l1, l2
@@ -223,19 +223,19 @@ if __name__ == "__main__":
     )
 
     model_config = ModelConfig(
-        n_hidden_layers=4,
-        max_connection_depth=1,
-        network_width=100,
-        sparsity=0,
-        skip_sequential_ratio=1,
+        n_hidden_layers=3,
+        max_connection_depth=4,
+        network_width=50,
+        sparsity=0.95,
+        skip_sequential_ratio=0.8,
         log_level=_log_level,
         # Options: bottom_k, cutoff
-        pruning_type="cutoff",
+        pruning_type="bottom_k",
         cutoff=0.001,
         prune_rate=0.1,
         # Options: fixed_sparsity, percentage, no_regrowth
         regrowth_type="fixed_sparsity",
-        regrowth_ratio=0.5,
+        regrowth_ratio=None,
         regrowth_percentage=0.10,
     )
 

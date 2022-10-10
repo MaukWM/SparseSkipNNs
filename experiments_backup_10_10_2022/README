@@ -1,0 +1,7 @@
+these were the first complete run of experiments
+
+some issues:
+ratio was not properly fixed during training, you can see this when plotting the actualized sparsity ratios,
+higher sparsities went for lower ratio (more shortcut connections)
+
+flop calculation is not complete here, flops required for pruning/regrowing are not included
