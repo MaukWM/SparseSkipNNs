@@ -475,7 +475,7 @@ class SparseNeuralNetwork(nn.Module):
         _prune_flops = self.prune_network()
         _regrowth_flops = self.regrow_network()
         _evolution_flops += _prune_flops + _regrowth_flops
-        print(f"[EvolveNetwork - Floppa] Pruning flops: {_prune_flops} Regrowth flops: {_regrowth_flops}")
+        self.l(f"[EvolveNetwork - Floppa] Pruning flops: {_prune_flops} Regrowth flops: {_regrowth_flops}", level=LogLevel.VERBOSE)
         self.l(message="=============== [EvolveNetwork - End] =================", level=LogLevel.SIMPLE)
 
         return _evolution_flops
@@ -613,7 +613,7 @@ class SparseNeuralNetwork(nn.Module):
         _seq_to_regrow = self.n_sequential_pruned
         _skip_to_regrow = self.n_skip_pruned
 
-        print(n_to_regrow, _seq_to_regrow, _skip_to_regrow)
+        # print(n_to_regrow, _seq_to_regrow, _skip_to_regrow)
 
         for i in range(max_iter):
             total_iter += 1
