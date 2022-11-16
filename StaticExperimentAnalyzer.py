@@ -12,6 +12,8 @@ import os
 
 from matplotlib import pyplot as plt
 
+DIRECTORY = "experiments_start_12_10_2022_end_tbd"
+
 
 def load_experiment(experiment_path) -> Tuple[SparseNeuralNetwork, SparseTrainer]:
     result_dict = dill.load(open(experiment_path, 'rb'))
@@ -21,12 +23,12 @@ def load_experiment(experiment_path) -> Tuple[SparseNeuralNetwork, SparseTrainer
 def load_trainers(dataset: str):
     result = {}
 
-    for experiment_config_dir in tqdm(os.listdir(f"experiments/static/{dataset}")):
-        _experiments = [x for x in os.listdir(os.path.join(f"experiments/static/{dataset}", experiment_config_dir)) if ".result" in x]
+    for experiment_config_dir in tqdm(os.listdir(f"{DIRECTORY}/static/{dataset}")):
+        _experiments = [x for x in os.listdir(os.path.join(f"{DIRECTORY}/static/{dataset}", experiment_config_dir)) if ".result" in x]
         result[experiment_config_dir] = []
         for _experiment in _experiments:
             _snn, _trainer = load_experiment(
-                f"experiments/static/{dataset}/{experiment_config_dir}/{_experiment}")
+                f"{DIRECTORY}/static/{dataset}/{experiment_config_dir}/{_experiment}")
             result[experiment_config_dir].append(_trainer)
 
     return result
@@ -156,6 +158,7 @@ class StaticExperimentAnalyzer:
         # print(to_plot_categories)
         mean_compiled_mcd_ratio_groupings = {}
         mean_compiled_mcd_sparsity_groupings = {}
+        std_compiled_mcd_sparsity_groupings = {}
         all_compiled_mcd_ratio_groupings = {}
         all_compiled_mcd_sparsity_groupings = {}
 
@@ -205,8 +208,10 @@ class StaticExperimentAnalyzer:
         for _grouping_key in self.groupings[grouping_name]:
             _sub_groupings = list(self.ratio_grouping.keys())
             _sub_grouping_dict = {}
+            _sub_grouping_dict_std = {}
             for _sub_grouping in _sub_groupings:
                 _sub_grouping_dict[_sub_grouping] = []
+                _sub_grouping_dict_std[_sub_grouping] = []
             for _experiment in self.groupings[grouping_name][_grouping_key]:
                 # Group by sparsity by hand
                 _sparsity = _experiment.split("_")[2].split("-")[1]
@@ -214,8 +219,10 @@ class StaticExperimentAnalyzer:
 
                 if k in self.mean_compiled_trainers[_experiment].keys():
                     _sub_grouping_dict[_ratio].append((_sparsity, self.mean_compiled_trainers[_experiment][k]))
+                    _sub_grouping_dict_std[_ratio].append((_sparsity, self.std_compiled_trainers[_experiment][k]))
 
             mean_compiled_mcd_sparsity_groupings[_grouping_key] = _sub_grouping_dict
+            std_compiled_mcd_sparsity_groupings[_grouping_key] = _sub_grouping_dict_std
 
             # print("subgroupdict", _sub_grouping_dict)
 
@@ -285,22 +292,38 @@ class StaticExperimentAnalyzer:
         for ratio_key in self.ratio_grouping.keys():
             ratio_colors[ratio_key] = (0.5 + 0.1 * float(ratio_key), 0.5 * float(ratio_key), float(ratio_key))
 
+        print("Ratio tables")
         # Plot the sub groupings in a single graphs
         for _compiled_mcd_grouping_key in mean_compiled_mcd_sparsity_groupings.keys():
+            print("Connection depth:", _compiled_mcd_grouping_key)
             _sub_grouping = mean_compiled_mcd_sparsity_groupings[_compiled_mcd_grouping_key]
+            _sub_grouping_std = std_compiled_mcd_sparsity_groupings[_compiled_mcd_grouping_key]
             for _ratio_key in _sub_grouping.keys():
                 _results = _sub_grouping[_ratio_key]
                 _results = sorted(_results, key=lambda x: x[0])
+                _results_std = _sub_grouping_std[_ratio_key]
+                _results_std = sorted(_results_std, key=lambda x: x[0])
+                # print("ratio_key", _ratio_key, _results, _results_std)
+                # Print suitably for an overleaf table
+                if _compiled_mcd_grouping_key != "1":
+                    print(f"{_ratio_key} & ", end="")
+                    for _i in range(len(_results)):
+                        _end = " & "
+                        if _i == len((_results)) - 1:
+                            _end = "\\\\\n"
+                        print(f"{_results[_i][1]:.1f}\\pm{_results_std[_i][1]:.2f}", end=_end)
                 if len(_results) > 0:
                     xs = [float(x[0]) for x in _results]
                     ys = [float(x[1]) for x in _results]
-                    plt.plot(xs, ys, label=f"{_ratio_key}") #, color=ratio_colors[_ratio_key])
+                    plt.plot(xs, ys, label=f"{_ratio_key}")  #, color=ratio_colors[_ratio_key])
             plt.xlabel("sparsity")
             plt.ylabel(k)
             plt.title(f"Connection depth {_compiled_mcd_grouping_key}")
             plt.legend()
             plt.grid()
             plt.show()
+
+            print(mean_compiled_mcd_sparsity_groupings)
 
 
 if __name__ == "__main__":
@@ -319,6 +342,7 @@ if __name__ == "__main__":
     # sea.plot_grouping("mcd", k="actualized_sparsity_ratio")
     # Investigate accuracy
     sea.plot_grouping("mcd", k="validation_accuracy")
+
 
     # print(trainer.items)
     # visualizer = Visualizer.Visualizer(trainer)

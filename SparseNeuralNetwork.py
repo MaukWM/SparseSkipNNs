@@ -10,7 +10,7 @@ import torch.nn.functional as F
 import numpy as np
 import random
 
-from Config import ModelConfig
+from Config import SparseModelConfig
 from LayerType import LayerType
 from LogLevel import LogLevel
 from item_keys import ItemKey
@@ -25,7 +25,7 @@ class SparseNeuralNetwork(nn.Module):
     skip_sequential_ratio=0.8 means 80% of the connections are aimed to be sequential
     prune_rate is the % of active connections we want to prune per evolutionary step
     """
-    def __init__(self, input_size, output_size, model_config: ModelConfig, l):
+    def __init__(self, input_size, output_size, model_config: SparseModelConfig, l):
         super(SparseNeuralNetwork, self).__init__()
         self.model_config = model_config
 
@@ -54,7 +54,7 @@ class SparseNeuralNetwork(nn.Module):
         self.regrowth_percentage = model_config.regrowth_percentage
 
         # Evolution checks
-        if self.pruning_type is not None and self.pruning_type != "bottom_k" and self.pruning_type != "cutoff":
+        if self.pruning_type is not None and self.pruning_type != "bottom_k" and self.pruning_type != "cutoff" and self.pruning_type != "no_pruning":
             raise ValueError(f"Invalid pruning type specified: {self.pruning_type}")
         if self.pruning_type == "bottom_k" and self.prune_rate is None:
             raise ValueError("If pruning type \"bottom_k\" is used, a prune rate must be specified")
@@ -70,7 +70,9 @@ class SparseNeuralNetwork(nn.Module):
             raise ValueError(f"It's not possible to have a higher max_connection_depth than there are hidden_layers: {self.max_connection_depth}>{self.n_hidden_layers + 1}")
         if self.max_connection_depth == 1 and self.skip_sequential_ratio != 1:
             raise ValueError(f"If the max_connection_depth is 1 (meaning we have a sequential only network), it is not possible to specify a skip-sequential ratio: {self.skip_sequential_ratio} != 1")
-        if self.sparsity >= 1 or self.sparsity < 0:
+        if self.sparsity is None:
+            self.l(message="Sparsity not set, treating the network as fully dense.", level=LogLevel.SIMPLE)
+        elif self.sparsity >= 1 or self.sparsity < 0:
             raise ValueError(f"Invalid sparsity {self.sparsity}, must be 0 <= sparsity < 1")
 
         # Initialize network
@@ -88,9 +90,14 @@ class SparseNeuralNetwork(nn.Module):
         self.n_max_skip_connections = self.calculate_n_max_skip_connections()
 
         # Calculate target n active connections for sequential and skip networks
-        self.n_target_active_connections = self.n_max_sequential_connections - round(self.sparsity * self.n_max_sequential_connections)
-        self.n_target_sequential_connections = round(self.n_target_active_connections * self.skip_sequential_ratio)
-        self.n_target_skip_connections = round(self.n_target_active_connections * (1 - self.skip_sequential_ratio))
+        if self.sparsity:
+            self.n_target_active_connections = self.n_max_sequential_connections - round(self.sparsity * self.n_max_sequential_connections)
+            self.n_target_sequential_connections = round(self.n_target_active_connections * self.skip_sequential_ratio)
+            self.n_target_skip_connections = round(self.n_target_active_connections * (1 - self.skip_sequential_ratio))
+        else:
+            self.n_target_active_connections = self.n_max_sequential_connections + self.n_max_skip_connections
+            self.n_target_sequential_connections = self.n_max_sequential_connections
+            self.n_target_skip_connections = self.n_max_skip_connections
 
         # Calculate target sparsities
         self.sequential_target_sparsity = 1 - self.n_target_sequential_connections / self.n_max_sequential_connections
@@ -355,9 +362,14 @@ class SparseNeuralNetwork(nn.Module):
         self.l(
             message=f"[ActualizedN]        N active connections={self.n_active_connections}, N active sequential connections={self.n_active_seq_connections}, N active skip connections={self.n_active_skip_connections}",
             level=LogLevel.SIMPLE)
-        self.l(
-            message=f"[TargetSparsity]     OverallSparsity={self.sparsity:.3f}, SequentialSparsity={self.sequential_target_sparsity:.3f}, SkipSparsity={self.skip_target_sparsity:.3f}, SparsityRatio={self.skip_sequential_ratio:.3f}, SkipSparsityByMaxSeq={1 - (self.sequential_target_sparsity - self.sparsity):.3f}",
-            level=LogLevel.SIMPLE)
+        if self.sparsity:
+            self.l(
+                message=f"[TargetSparsity]     OverallSparsity={self.sparsity:.3f}, SequentialSparsity={self.sequential_target_sparsity:.3f}, SkipSparsity={self.skip_target_sparsity:.3f}, SparsityRatio={self.skip_sequential_ratio:.3f}, SkipSparsityByMaxSeq={1 - (self.sequential_target_sparsity - self.sparsity):.3f}",
+                level=LogLevel.SIMPLE)
+        else:
+            self.l(
+                message=f"[TargetSparsity]     OverallSparsity=None, SequentialSparsity=None, SkipSparsity=None, SparsityRatio=None, SkipSparsityByMaxSeq=None",
+                level=LogLevel.SIMPLE)
         self.l(
             message=f"[ActualizedSparsity] OverallSparsity={actualized_overall_sparsity:.3f}, SequentialSparsity={actualized_sequential_sparsity:.3f}, SkipSparsity={actualized_skip_sparsity:.3f}, SparsityRatio={actualized_sparsity_ratio:.3f}, SkipSparsityByMaxSeq={actualized_skip_sparsity_by_max_seq:.3f}",
             level=LogLevel.SIMPLE)
@@ -368,6 +380,9 @@ class SparseNeuralNetwork(nn.Module):
         """
         Prune the network according to different methods.
         """
+        if self.pruning_type == "no_pruning":
+            return 0
+
         _start_pruning = time.time()
         self.l(
             message=f"[EvolveNetwork - Pre-pruning] Pre-pruning Overall Sparsity: {1 - self.n_active_connections / self.n_max_sequential_connections:.3f}, Pre-pruning Skip Sparsity: {1 - self.n_active_skip_connections / self.n_max_sequential_connections:.3f}, Pre-pruning Sequential Sparsity: {1 - self.n_active_seq_connections / self.n_max_sequential_connections:.3f}",
@@ -505,7 +520,7 @@ class SparseNeuralNetwork(nn.Module):
         return _regrow_flops
 
     def regrow_exactly(self, sequential_layer_names, skip_layer_names, max_iter_ratio=MAX_REGROW_ITER_RATIO,
-                        max_iter_connection_growth=20):
+                       max_iter_connection_growth=20):
         """
         Regrow connections by a given ratio.
         :param n_to_regrow: N connections to regrow
@@ -641,6 +656,7 @@ class SparseNeuralNetwork(nn.Module):
                     #     _layer_name_list = sequential_layer_names
                     # else:
                     #     _layer_name_list = skip_layer_names
+                    print("regrowth type is fixed_sparsity but we're not regrowing exactly: this should never happen!")
                     if _seq_to_regrow > 0:
                         _layer_name_list = sequential_layer_names
                         _seq_to_regrow -= 1

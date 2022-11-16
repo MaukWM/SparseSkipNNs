@@ -5,7 +5,7 @@ from LogLevel import LogLevel
 
 
 @dataclass
-class ModelConfig:
+class SparseModelConfig:
     n_hidden_layers: int
     max_connection_depth: int
     network_width: int
@@ -21,7 +21,14 @@ class ModelConfig:
 
 
 @dataclass
-class TrainerConfig:
+class DenseModelConfig:
+    n_hidden_layers: int
+    network_width: int
+    log_level: LogLevel
+
+
+@dataclass
+class SparseTrainerConfig:
     batch_size: int
     dataset: str
     epochs: int
@@ -31,5 +38,15 @@ class TrainerConfig:
     decay_type: str
     weight_decay_lambda: float
 
+
+@dataclass
+class DenseTrainerConfig:
+    batch_size: int
+    dataset: str
+    epochs: int
+    lr: float
+    early_stopping_threshold: int
+    decay_type: str
+    weight_decay_lambda: float
 
 

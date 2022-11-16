@@ -8,7 +8,7 @@ base_configuration = {
         # Options: CIFAR10/CIFAR100
         "dataset": None,
         "epochs": 100,
-        "evolution_interval": 1,
+        "evolution_interval": None,
         "lr": 5e-3,
         "early_stopping_threshold": 4,
         # Options: l1, l2
@@ -23,11 +23,11 @@ base_configuration = {
         "skip_sequential_ratio": None,
         "log_level": "SIMPLE",
         # Options: bottom_k, cutoff
-        "pruning_type": "bottom_k",
+        "pruning_type": "no_pruning",
         "cutoff": 0.001,
         "prune_rate": 0.1,
         # Options: fixed_sparsity, percentage, no_regrowth
-        "regrowth_type": "fixed_sparsity",
+        "regrowth_type": "no_regrowth",
         "regrowth_ratio": None,
         "regrowth_percentage": 0.10,
     }
@@ -42,10 +42,16 @@ datasets = ["CIFAR10"]
 sparsities = [0.75, 0.80, 0.85, 0.90, 0.95, 0.98, 0.99, 0.995, 0.999]
 ratios = [1.00, 0.90, 0.80, 0.70, 0.60, 0.50, 0.40, 0.30, 0.20, 0.10, 0.00]
 max_connection_depths = [1, 2, 3, 4]
+experiment_directory = "static_topology"
+experiment_top_directory = "experiments_start_09_11_2022"
 
 for dataset in datasets:
-    if not os.path.isdir(f"experiments/static/{dataset}/"):
-        os.mkdir(f"experiments/static/{dataset}/")
+    if not os.path.isdir(f"{experiment_top_directory}"):
+        os.mkdir(f"{experiment_top_directory}")
+    if not os.path.isdir(f"{experiment_top_directory}/{experiment_directory}"):
+        os.mkdir(f"{experiment_top_directory}/{experiment_directory}")
+    if not os.path.isdir(f"{experiment_top_directory}/{experiment_directory}/{dataset}/"):
+        os.mkdir(f"{experiment_top_directory}/{experiment_directory}/{dataset}/")
     for sparsity in sparsities:
         for ratio in ratios:
             for max_connection_depth in max_connection_depths:
@@ -60,12 +66,12 @@ for dataset in datasets:
 
                 directory_name = f"DS-{dataset}_MCD-{max_connection_depth}_S-{sparsity}_R-{_ratio}"
 
-                if not os.path.isdir(f"experiments/static/{dataset}/{directory_name}"):
-                    os.mkdir(f"experiments/static/{dataset}/{directory_name}")
+                if not os.path.isdir(f"{experiment_top_directory}/{experiment_directory}/{dataset}/{directory_name}"):
+                    os.mkdir(f"{experiment_top_directory}/{experiment_directory}/{dataset}/{directory_name}")
 
-                if not os.path.exists(f"experiments/static/{dataset}/{directory_name}/config.pkl"):
-                    print(f"creating experiments/static/{dataset}/{directory_name}/config.pkl")
-                    with open(f"experiments/static/{dataset}/{directory_name}/config.pkl", "wb") as file:
+                if not os.path.exists(f"{experiment_top_directory}/{experiment_directory}/{dataset}/{directory_name}/config.pkl"):
+                    print(f"creating {experiment_top_directory}/{experiment_directory}/{dataset}/{directory_name}/config.pkl")
+                    with open(f"{experiment_top_directory}/{experiment_directory}/{dataset}/{directory_name}/config.pkl", "wb") as file:
                         dill.dump(config, file)
 
 

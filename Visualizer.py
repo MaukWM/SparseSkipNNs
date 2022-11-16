@@ -10,7 +10,7 @@ from item_keys import ItemKey
 
 class Visualizer:
 
-    def __init__(self, trainer: SparseTrainer):
+    def __init__(self, trainer):
         self.trainer = trainer
         self.trainer_items = trainer.items
 
@@ -18,7 +18,7 @@ class Visualizer:
         self.plot_train_val_loss()
         self.plot_accuracies()
 
-        if self.trainer.evolution_interval is not None:
+        if isinstance(self.trainer, type(SparseTrainer)) and self.trainer.evolution_interval is not None:
             self.plot_sparsity_info()
             self.plot_k_distributions()
             self.plot_k_evolution_graphs()
