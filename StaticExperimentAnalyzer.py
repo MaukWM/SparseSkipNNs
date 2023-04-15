@@ -1,4 +1,5 @@
 import math
+import time
 from typing import Tuple
 
 import dill
@@ -12,7 +13,7 @@ import os
 
 from matplotlib import pyplot as plt
 
-DIRECTORY = "experiments_start_16_11_2022_end_18_11_2022"
+DIRECTORY = "experiments_start_12_10_2022_end_27_10_2022"
 
 
 def load_experiment(experiment_path) -> Tuple[SparseNeuralNetwork, SparseTrainer]:
@@ -44,7 +45,7 @@ def average_ld(ld):
             try:
                 average_collected_trainer_items[collected_trainer_item_name] = np.mean(average_collected_trainer_items[collected_trainer_item_name])
             except Exception:
-                print("Fatal error in average_ld")
+                print(f"fatal error in average_ld(ld), most likely caused by experiments ran with a static topology, continuing...")
     return average_collected_trainer_items
 
 
@@ -58,7 +59,7 @@ def std_ld(ld):
             try:
                 std[collected_trainer_item_name] = np.std(std[collected_trainer_item_name])
             except Exception:
-                print("Fatal error in std_ld")
+                print(f"fatal error in std_ld(ld), most likely caused by experiments ran with a static topology, continuing...")
     return std
 
 
@@ -91,10 +92,9 @@ def compile_trainer_results(trainers):
             for trainer_item_name in trainer_items.keys():
                 if trainer_item_name not in extra_items:
                     if trainer_peak_epoch < len(trainer_items[trainer_item_name]):
-                        print("gd", trainer_item_name, trainer_items[trainer_item_name][trainer_peak_epoch])
                         trainer_items[trainer_item_name] = trainer_items[trainer_item_name][trainer_peak_epoch]
                     else:
-                        print("sh", trainer_item_name, trainer_items[trainer_item_name])
+                        print(f"WARNING: {trainer_item_name}'s trainer peak epoch {trainer_peak_epoch} is less than trainers' item list {len(trainer_items[trainer_item_name])}")
 
             # Add big floppa
             trainer_items["inference_flops_at_peak"] = trainer.inference_flops_at_peak
@@ -102,6 +102,12 @@ def compile_trainer_results(trainers):
 
             collected_trainer_items.append(trainer_items)
 
+        for item in collected_trainer_items:
+            item.pop('k_n_distribution')
+            item.pop('k_sparsity_distribution')
+            item.pop('k_sparsity_distribution_by_max_seq')
+            item.pop('layer_outgoing_remaining_ratio')
+            item.pop('layer_incoming_remaining_ratio')
         average_collected_trainer_items = average_ld(collected_trainer_items)
         std_collected_trainer_items = std_ld(collected_trainer_items)
 
@@ -253,32 +259,53 @@ class StaticExperimentAnalyzer:
         #         plt.grid()
 
         # Plot detailed graphs
-        sparsity_colors = {}
-        for sparsity_key in self.sparsity_grouping.keys():
-            sparsity_colors[sparsity_key] = (float(sparsity_key) * 0.5, 0, (float(sparsity_key) - 0.6) * 2)
-
-        print("KEYS", mean_compiled_mcd_ratio_groupings.keys())
-        sorted_mean_etc_keys = sorted(list(mean_compiled_mcd_ratio_groupings.keys()))
-        print("KEYS", sorted_mean_etc_keys)
+        # sparsity_colors = {}
+        # for sparsity_key in self.sparsity_grouping.keys():
+        #     sparsity_colors[sparsity_key] = (float(sparsity_key) * 0.5, 0, (float(sparsity_key) - 0.6) * 2)
 
         # Plot the sub groupings in a single graphs
-        for _compiled_mcd_grouping_key in sorted_mean_etc_keys:
+        for _compiled_mcd_grouping_key in mean_compiled_mcd_ratio_groupings.keys():
+            plt.gcf().clear()
+            fig = plt.figure(1)
+            ax = fig.add_subplot(111)
+
+            # Order the labels, full experiment
+            order = [0, 2, 1, 8, 3, 4, 7, 5, 6]
+            # Order for first experiment round
+            # order = [0, 2, 1, 5, 3, 4]
             _sub_grouping = mean_compiled_mcd_ratio_groupings[_compiled_mcd_grouping_key]
-            for _sparsity_key in _sub_grouping.keys():
+            _sparsity_keys = list(_sub_grouping.keys())
+            print(order, _sparsity_keys)
+            _sparsity_keys = [_sparsity_keys[idx] for idx in order]
+
+            # Setup colors
+            n_colors = len(order)
+            sparsity_colors = []
+            for i in range(n_colors):
+                sparsity_colors.append((i * 0.8/n_colors, 0.5-i*0.4/n_colors, i * 0.4/n_colors))
+
+            for i in range(len(_sparsity_keys)):
+                _sparsity_key = _sparsity_keys[i]
                 _results = _sub_grouping[_sparsity_key]
-                _results = sorted(_results, key=lambda tup: tup[0])
-                print(_results)
                 if len(_results) > 0:
                     xs = [float(x[0]) for x in _results]
                     ys = [float(x[1]) for x in _results]
-                    es = [float(x[1]) for x in _results]
-                    plt.plot(xs, ys, es, label=f"{_sparsity_key}")  #, color=sparsity_colors[_sparsity_key])
-            plt.xlabel("ratio")
-            plt.ylabel(k)
-            plt.title(f"Connection depth {_compiled_mcd_grouping_key}")
-            plt.legend()
-            plt.grid()
-            plt.show()
+                    _density_key = 1 - float(_sparsity_key)
+                    if _density_key > 0.01:
+                        _density_key = f"{_density_key:.2f}"
+                    else:
+                        _density_key = f"{_density_key:.3f}"
+                    ax.plot(xs, ys, label=f"{_density_key}", color=sparsity_colors[i], linewidth=1)
+            if k=="actualized_sparsity_ratio":
+                ax.plot(np.arange(0, 1.1, 0.1), np.arange(0, 1.1, 0.1), label="static", color=(0.2, 0.3, 0.7), linewidth=1)
+            handles, labels = ax.get_legend_handles_labels()
+            ax.set_xlabel("Ratio")
+            ax.set_ylabel("Validation Accuracy %")
+            ax.set_title(f"Accuracy by ratio, D={_compiled_mcd_grouping_key}")
+            lgd = ax.legend(handles, labels, loc='upper center', bbox_to_anchor=(1.1, 0.75))
+            ax.grid('on', which='both')
+            ax.set_xlim(0, 0.9)
+            fig.savefig(f"out/{time.time()}.png", bbox_extra_artists=(lgd,), bbox_inches="tight")
 
         print(generalized_compiled_mcd_ratio_groupings_mean)
         print(generalized_compiled_mcd_ratio_groupings_std)
@@ -291,31 +318,56 @@ class StaticExperimentAnalyzer:
             for _sub_grouping_key in _sub_grouping_keys:
                 print(f"{_sub_grouping_key}: {_sub_grouping[_sub_grouping_key]:.2e} ± {generalized_compiled_mcd_ratio_groupings_std[_generalized_compiled_mcd_grouping_key][_sub_grouping_key]:.2e}")
 
+        plt.gcf().clear()
+        fig = plt.figure(1)
+        ax = fig.add_subplot(111)
+
+        # Setup colors
+        n_colors = 4
+        cd_colors = []
+        for i in range(n_colors):
+            cd_colors.append((i * 0.8 / n_colors, 0.5 - i * 0.4 / n_colors, i * 0.4 / n_colors))
+        _generalized_compiled_mcd_grouping_keys = list(generalized_compiled_mcd_ratio_groupings_mean.keys())
         # Plot the sub groupings in a single graphs
-        for _generalized_compiled_mcd_grouping_key in generalized_compiled_mcd_ratio_groupings_mean.keys():
+        for i in range(len(_generalized_compiled_mcd_grouping_keys)):
+            _generalized_compiled_mcd_grouping_key = _generalized_compiled_mcd_grouping_keys[i]
             _sub_grouping = generalized_compiled_mcd_ratio_groupings_mean[_generalized_compiled_mcd_grouping_key]
             _results = sorted([(_key, _sub_grouping[_key]) for _key in _sub_grouping], key=lambda x: x[0])
-            xs = [float(x[0]) for x in _results]
+            xs = [1 - float(x[0]) for x in _results]
             ys = [float(x[1]) for x in _results]
-            plt.plot(xs, ys, label=f"{_generalized_compiled_mcd_grouping_key}")
-        plt.xlabel("sparsity")
-        plt.ylabel(k)
-        plt.title(f"Average model performance by connection depth and sparsity")
-        plt.legend()
-        plt.grid()
-        plt.show()
+            ax.plot(xs, ys, label=f"{_generalized_compiled_mcd_grouping_key}", color=cd_colors[i], linewidth=1)
+        handles, labels = ax.get_legend_handles_labels()
+        ax.set_xlabel("Density")
+        ax.set_ylabel(k)
+        ax.set_title(f"Average model performance by density")
+        lgd = ax.legend(handles, labels)
+        ax.grid()
+        ax.set_xlim(0.25, 0.001)
+        fig.savefig(f"out/{time.time()}.png", bbox_extra_artists=(lgd,), bbox_inches="tight")
 
-        ratio_colors = {}
-        for ratio_key in self.ratio_grouping.keys():
-            ratio_colors[ratio_key] = (0.5 + 0.1 * float(ratio_key), 0.5 * float(ratio_key), float(ratio_key))
+        # ratio_colors = {}
+        # for ratio_key in self.ratio_grouping.keys():
+        #     ratio_colors[ratio_key] = (0.5 + 0.1 * float(ratio_key), 0.5 * float(ratio_key), float(ratio_key))
 
         print("Ratio tables")
         # Plot the sub groupings in a single graphs
         for _compiled_mcd_grouping_key in mean_compiled_mcd_sparsity_groupings.keys():
+            plt.gcf().clear()
+            fig = plt.figure(1)
+            ax = fig.add_subplot(111)
+
+            # Setup colors
+            n_colors = len(list(mean_compiled_mcd_sparsity_groupings[_compiled_mcd_grouping_key].keys()))
+            ratio_colors = []
+            for i in range(n_colors):
+                ratio_colors.append((i * 0.8/n_colors, 0.5-i*0.4/n_colors, i * 0.4/n_colors))
+
             print("Connection depth:", _compiled_mcd_grouping_key)
             _sub_grouping = mean_compiled_mcd_sparsity_groupings[_compiled_mcd_grouping_key]
             _sub_grouping_std = std_compiled_mcd_sparsity_groupings[_compiled_mcd_grouping_key]
-            for _ratio_key in _sub_grouping.keys():
+            _ratio_keys = list(_sub_grouping.keys())
+            for i in range(len(_ratio_keys)):
+                _ratio_key = _ratio_keys[i]
                 _results = _sub_grouping[_ratio_key]
                 _results = sorted(_results, key=lambda x: x[0])
                 _results_std = _sub_grouping_std[_ratio_key]
@@ -330,15 +382,18 @@ class StaticExperimentAnalyzer:
                             _end = "\\\\\n"
                         print(f"{_results[_i][1]:.1f}\\pm{_results_std[_i][1]:.2f}", end=_end)
                 if len(_results) > 0:
-                    xs = [float(x[0]) for x in _results]
+                    xs = [1 - float(x[0]) for x in _results]
                     ys = [float(x[1]) for x in _results]
-                    plt.plot(xs, ys, label=f"{_ratio_key}")  #, color=ratio_colors[_ratio_key])
-            plt.xlabel("sparsity")
-            plt.ylabel(k)
-            plt.title(f"Connection depth {_compiled_mcd_grouping_key}")
-            plt.legend()
-            plt.grid()
-            plt.show()
+                    ax.plot(xs, ys, label=f"{_ratio_key}", color=ratio_colors[i], linewidth=1)
+            handles, labels = ax.get_legend_handles_labels()
+            ax.set_xlabel("Density")
+            ax.set_ylabel(k)
+            ax.set_ylabel("Validation Accuracy %")
+            ax.set_title(f"Accuracy by density, D={_compiled_mcd_grouping_key}")
+            lgd = ax.legend(handles, labels, loc='upper center', bbox_to_anchor=(1.1, 0.75))
+            ax.grid('on', which='both')
+            ax.set_xlim(0.001, 0.25)
+            fig.savefig(f"out/{time.time()}.png", bbox_extra_artists=(lgd,), bbox_inches="tight")
 
             print(mean_compiled_mcd_sparsity_groupings)
 

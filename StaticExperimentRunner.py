@@ -91,11 +91,13 @@ if __name__ == "__main__":
             continue
         if n_results == N_EXPERIMENTS_PER_CONFIG:
             _sub_result_trainer_times = []
+            _sub_result_trainer_vals = []
             for result in results:
                 _, _trainer = StaticExperimentAnalyzer.load_experiment(
                     f"{experiment_top_directory}/{experiment_directory}/{experiment_dataset}/{_experiment}/{result}")
                 _sub_result_trainer_times.append(_trainer.total_train_time)
-            print(f"Experiment {_experiment} has already been completed and took ~{int(np.mean(_sub_result_trainer_times))}s, continuing...")
+                _sub_result_trainer_vals.append(_trainer.validation_accuracy_at_peak)
+            print(f"Experiment {_experiment} has already been completed[{np.mean(_sub_result_trainer_vals):.2f}±{np.std(_sub_result_trainer_vals):.2f}] and took ~{int(np.mean(_sub_result_trainer_times))}s, continuing...")
             continue
 
         if n_results > 0:
