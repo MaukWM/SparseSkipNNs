@@ -15,8 +15,8 @@ N_EXPERIMENTS_PER_CONFIG = 5
 
 loaded_datasets = {}
 
-experiment_directory = "static_topology"
-experiment_top_directory = "experiments_start_09_11_2022"
+experiment_directory = "experiments"
+experiment_top_directory = "experiments_static_vs_dynamic_and_skip_vs_no_skip"
 
 
 def get_configs_from_file(file_path):

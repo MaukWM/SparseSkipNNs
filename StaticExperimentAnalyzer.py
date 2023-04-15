@@ -12,7 +12,7 @@ import os
 
 from matplotlib import pyplot as plt
 
-DIRECTORY = "experiments_start_12_10_2022_end_tbd"
+DIRECTORY = "experiments_start_16_11_2022_end_18_11_2022"
 
 
 def load_experiment(experiment_path) -> Tuple[SparseNeuralNetwork, SparseTrainer]:
@@ -41,7 +41,10 @@ def average_ld(ld):
         if type(average_collected_trainer_items[collected_trainer_item_name][0]) is dict:
             average_collected_trainer_items[collected_trainer_item_name] = average_ld(average_collected_trainer_items[collected_trainer_item_name])
         else:
-            average_collected_trainer_items[collected_trainer_item_name] = np.mean(average_collected_trainer_items[collected_trainer_item_name])
+            try:
+                average_collected_trainer_items[collected_trainer_item_name] = np.mean(average_collected_trainer_items[collected_trainer_item_name])
+            except Exception:
+                print("Fatal error in average_ld")
     return average_collected_trainer_items
 
 
@@ -52,7 +55,10 @@ def std_ld(ld):
         if type(std[collected_trainer_item_name][0]) is dict:
             std[collected_trainer_item_name] = std_ld(std[collected_trainer_item_name])
         else:
-            std[collected_trainer_item_name] = np.std(std[collected_trainer_item_name])
+            try:
+                std[collected_trainer_item_name] = np.std(std[collected_trainer_item_name])
+            except Exception:
+                print("Fatal error in std_ld")
     return std
 
 
@@ -84,7 +90,11 @@ def compile_trainer_results(trainers):
             # for all trainer.items grab the element of trainer.peak_epoch
             for trainer_item_name in trainer_items.keys():
                 if trainer_item_name not in extra_items:
-                    trainer_items[trainer_item_name] = trainer_items[trainer_item_name][trainer_peak_epoch]
+                    if trainer_peak_epoch < len(trainer_items[trainer_item_name]):
+                        print("gd", trainer_item_name, trainer_items[trainer_item_name][trainer_peak_epoch])
+                        trainer_items[trainer_item_name] = trainer_items[trainer_item_name][trainer_peak_epoch]
+                    else:
+                        print("sh", trainer_item_name, trainer_items[trainer_item_name])
 
             # Add big floppa
             trainer_items["inference_flops_at_peak"] = trainer.inference_flops_at_peak
@@ -247,15 +257,22 @@ class StaticExperimentAnalyzer:
         for sparsity_key in self.sparsity_grouping.keys():
             sparsity_colors[sparsity_key] = (float(sparsity_key) * 0.5, 0, (float(sparsity_key) - 0.6) * 2)
 
+        print("KEYS", mean_compiled_mcd_ratio_groupings.keys())
+        sorted_mean_etc_keys = sorted(list(mean_compiled_mcd_ratio_groupings.keys()))
+        print("KEYS", sorted_mean_etc_keys)
+
         # Plot the sub groupings in a single graphs
-        for _compiled_mcd_grouping_key in mean_compiled_mcd_ratio_groupings.keys():
+        for _compiled_mcd_grouping_key in sorted_mean_etc_keys:
             _sub_grouping = mean_compiled_mcd_ratio_groupings[_compiled_mcd_grouping_key]
             for _sparsity_key in _sub_grouping.keys():
                 _results = _sub_grouping[_sparsity_key]
+                _results = sorted(_results, key=lambda tup: tup[0])
+                print(_results)
                 if len(_results) > 0:
                     xs = [float(x[0]) for x in _results]
                     ys = [float(x[1]) for x in _results]
-                    plt.plot(xs, ys, label=f"{_sparsity_key}")  #, color=sparsity_colors[_sparsity_key])
+                    es = [float(x[1]) for x in _results]
+                    plt.plot(xs, ys, es, label=f"{_sparsity_key}")  #, color=sparsity_colors[_sparsity_key])
             plt.xlabel("ratio")
             plt.ylabel(k)
             plt.title(f"Connection depth {_compiled_mcd_grouping_key}")
