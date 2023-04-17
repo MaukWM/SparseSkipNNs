@@ -81,7 +81,7 @@ class SparseNeuralNetwork(nn.Module):
 
         # Define activation functions used, None is a linear summation of inputs
         # TODO: Implement Mish/Swish?
-        self.hidden_activation_function = F.relu
+        self.hidden_activation_function = F.mish
         self.final_activation_function = None
 
         # Calculate max amount of sequential and skip connections, to be used for calculating global sparsity target and
