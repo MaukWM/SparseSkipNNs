@@ -658,7 +658,9 @@ class SparseNeuralNetwork(nn.Module):
             # Decide whether to regrow a sequential or skip connection depending on ratio and n weight types activated
             if n_weights_activated > 0:
                 # Select layer type to regrow depending on type
-                if self.regrowth_type == "fixed_sparsity":
+                if self.max_connection_depth == 1:
+                    _layer_name_list = sequential_layer_names
+                elif self.regrowth_type == "fixed_sparsity":
                     # if (_sequential_activated + self.n_active_seq_connections - self.n_sequential_pruned) / (_skip_activated + _sequential_activated + self.n_active_connections - self.n_active_connections_pruned) < self.regrowth_ratio:
                     #     _layer_name_list = sequential_layer_names
                     # else:
