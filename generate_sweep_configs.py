@@ -62,7 +62,7 @@ variables = {
 
 n_experiments = 5
 
-config_file = "training/sweep/configs/dynamic_static_skip_no_skip_experiment_18apr.json"
+config_file = "training/sweep/configs/dynamic_static_skip_no_skip_experiment_18apr_ver2.json"
 collected_configs = []
 
 combinations = [dict(zip(variables.keys(), values)) for values in product(*variables.values())]
