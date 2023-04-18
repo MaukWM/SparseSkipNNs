@@ -2,6 +2,7 @@ import math
 import time
 
 import torch
+import wandb
 from torch import nn
 from torch.utils.data import DataLoader
 from torchvision import datasets
@@ -69,7 +70,8 @@ class SparseNeuralNetwork(nn.Module):
         if self.max_connection_depth > self.n_hidden_layers + 1:
             raise ValueError(f"It's not possible to have a higher max_connection_depth than there are hidden_layers: {self.max_connection_depth}>{self.n_hidden_layers + 1}")
         if self.max_connection_depth == 1 and self.skip_sequential_ratio != 1:
-            raise ValueError(f"If the max_connection_depth is 1 (meaning we have a sequential only network), it is not possible to specify a skip-sequential ratio: {self.skip_sequential_ratio} != 1")
+            print(f"If the max_connection_depth is 1 (meaning we have a sequential only network), it is not possible to specify a skip-sequential ratio: {self.skip_sequential_ratio} != 1. Setting to 1.")
+            self.skip_sequential_ratio = 1
         if self.sparsity is None:
             self.l(message="Sparsity not set, treating the network as fully dense.", level=LogLevel.SIMPLE)
         elif self.sparsity >= 1 or self.sparsity < 0:
@@ -194,7 +196,7 @@ class SparseNeuralNetwork(nn.Module):
 
     def calculate_n_max_skip_connections(self):
         """
-        Calculate the maximum amount of sequential connections. Used for sparsity calculations.
+        Calculate the maximum amount of skip connections. Used for sparsity calculations.
         """
         result = 0
         for i in range(2, self.max_connection_depth + 1):
@@ -459,6 +461,8 @@ class SparseNeuralNetwork(nn.Module):
         self.n_sequential_pruned = n_sequential_pruned
         self.n_skip_pruned = n_skip_pruned
         self.n_active_connections_pruned = (n_sequential_pruned + n_skip_pruned)
+        wandb.log({"n_skip_pruned": n_skip_pruned,
+                   "n_seq_pruned": n_sequential_pruned})
         # Each prune costs a flop
         _prune_flops += self.n_active_connections_pruned
 
@@ -479,7 +483,7 @@ class SparseNeuralNetwork(nn.Module):
             message=f"[EvolveNetwork - Post-pruning] Post-pruning Overall Sparsity: {1 - self.n_active_connections / self.n_max_sequential_connections:.3f}, Post-pruning Skip Sparsity: {1 - self.n_active_skip_connections / self.n_max_sequential_connections:.3f}, Post-pruning Sequential Sparsity: {1 - self.n_active_seq_connections / self.n_max_sequential_connections:.3f}",
             level=LogLevel.SIMPLE)
 
-        return _prune_flops
+        return _prune_flops, self.n_active_connections_pruned
 
     def evolve_network(self):
         """
@@ -487,19 +491,20 @@ class SparseNeuralNetwork(nn.Module):
         """
         _evolution_flops = 0
         self.l(message="\n=============== [EvolveNetwork - Start] ===============", level=LogLevel.SIMPLE)
-        _prune_flops = self.prune_network()
-        _regrowth_flops = self.regrow_network()
+        _prune_flops, n_pruned = self.prune_network()
+        _regrowth_flops = self.regrow_network(n_pruned)
         _evolution_flops += _prune_flops + _regrowth_flops
         self.l(message=f"[EvolveNetwork - Floppa] Pruning flops: {_prune_flops} Regrowth flops: {_regrowth_flops}", level=LogLevel.VERBOSE)
         self.l(message="=============== [EvolveNetwork - End] =================", level=LogLevel.SIMPLE)
 
         return _evolution_flops
 
-    def regrow_network(self):
+    def regrow_network(self, n_pruned):
         """
         Regrow connections in the network depending on the method.
         """
         _regrow_flops = 0
+        # fixed_sparsity == fixed_ratio
         if self.regrowth_type == "fixed_sparsity":
             # n_new_connections = np.clip(self.n_target_active_connections - self.n_active_connections, 0, None)
             _regrow_flops += self.regrow_exactly(self.sequential_layer_names, self.skip_layer_names)
@@ -509,6 +514,8 @@ class SparseNeuralNetwork(nn.Module):
             n_new_connections = np.clip(round(self.n_active_connections * self.regrowth_percentage), 0, self.n_max_sequential_connections - self.n_active_connections)
         elif self.regrowth_type == "no_regrowth":
             return _regrow_flops
+        elif self.regrowth_type == "by_ratio":
+            return self.regrow_by_ratio(n_pruned, self.sequential_layer_names, self.skip_layer_names)
         else:
             raise ValueError(f"No valid regrowth type was given: {self.regrowth_type}")
 
