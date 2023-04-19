@@ -33,7 +33,7 @@ base_configuration = {
 # ACTUAL EXPERIMENT
 variables = {
     "dataset": ["CIFAR10"],
-    "sparsity": [0.6, 0.7, 0.8, 0.9, 0.95, 0.99],
+    "sparsity": [0.75, 0.85, 0.9, 0.95, 0.99],
     "evolution_interval": [None, 1],
     "max_connection_depth": [1, 3],
     "skip_sequential_ratio": [0.5]
@@ -62,7 +62,7 @@ variables = {
 
 n_experiments = 5
 
-config_file = "training/sweep/configs/dynamic_static_skip_no_skip_experiment_19apr.json"
+config_file = "training/sweep/configs/dynamic_static_skip_no_skip_experiment_19apr_ver2.json"
 collected_configs = []
 
 combinations = [dict(zip(variables.keys(), values)) for values in product(*variables.values())]
