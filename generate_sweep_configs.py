@@ -33,7 +33,7 @@ base_configuration = {
 # ACTUAL EXPERIMENT
 variables = {
     "dataset": ["CIFAR10"],
-    "sparsity": [0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99],
+    "sparsity": [0.6, 0.7, 0.8, 0.9, 0.95, 0.99],
     "evolution_interval": [None, 1],
     "max_connection_depth": [1, 3],
     "skip_sequential_ratio": [0.5]
