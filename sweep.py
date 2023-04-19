@@ -7,7 +7,7 @@ import wandb
 
 from training.loop import train
 
-project_name = "19aprtest"
+project_name = "dynamic_static_skip_no_skip_experiment_19apr"
 wandb.init(project=project_name)
 
 
